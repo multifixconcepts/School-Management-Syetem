@@ -1,7 +1,7 @@
 services:
   school8:
     build:
-      context: .
+      context: ./Backend/sms-backend
       dockerfile: Dockerfile
     container_name: school8
     restart: always
