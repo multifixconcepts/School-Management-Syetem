@@ -135,3 +135,17 @@ docker-compose.local.yml
 !.env.example
 !docker-compose.yml
 !Dockerfile
+
+# Environment files
+.env
+.env.bak
+*.env
+*.env.bak
+
+# Backend env files
+Backend/sms-backend/.env
+Backend/sms-backend/.env.bak
+
+# Frontend env files
+Frontend/sms-client/.env
+Frontend/sms-client/.env.bak
