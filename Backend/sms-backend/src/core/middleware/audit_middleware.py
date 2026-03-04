@@ -217,7 +217,7 @@ class AuditLoggingMiddleware(BaseHTTPMiddleware):
                         # Generate enhanced details
                         details = self.generate_enhanced_details(request, action, entity_type, entity_id, request_body, target_tenant_id)
                         
-                        super_admin_service.log_super_admin_activity(
+                        await super_admin_service.log_super_admin_activity(
                             user_id=user_id,
                             action=action,
                             entity_type=entity_type,
@@ -234,7 +234,7 @@ class AuditLoggingMiddleware(BaseHTTPMiddleware):
                     db = next(get_db())
                     try:
                         audit_service = AuditLoggingService(db=db, tenant_id=tenant_id)
-                        audit_service.log_activity(
+                        await audit_service.log_activity(
                             user_id=user_id,
                             action=action,
                             entity_type=entity_type,

@@ -5,6 +5,7 @@ import { Enrollment } from '@/types/enrollment';
 import { Student } from '@/types/student';
 import { Button } from '@/components/ui/button';
 import PermissionGuard from '@/components/auth/permission-guard';
+import { Pencil, Trash2, Archive, RotateCcw } from 'lucide-react';
 
 interface Props {
   enrollments: Enrollment[];
@@ -66,16 +67,16 @@ export default function EnrollmentTable({
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-muted/30 border-b">
-                <tr className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  <th className="p-4">Student</th>
-                  <th className="p-4">Academic Year</th>
+                <tr className="text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                  <th className="p-4 bg-muted/50 sticky left-0 z-10">Student</th>
+                  <th className="p-4">Year</th>
                   <th className="p-4">Grade</th>
                   <th className="p-4">Section</th>
-                  <th className="p-4">Semester</th>
+                  <th className="p-4 text-center">Sem</th>
                   <th className="p-4">Date</th>
                   <th className="p-4">Status</th>
                   <th className="p-4">Promotion</th>
-                  <th className="p-4 text-right">Actions</th>
+                  <th className="p-4 text-right bg-muted/50 sticky right-0 z-10">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -84,11 +85,11 @@ export default function EnrollmentTable({
                   const promoStatus = e.promotion_status?.status;
 
                   return (
-                    <tr key={e.id} className="hover:bg-muted/10 transition-colors">
-                      <td className="p-4">
+                    <tr key={e.id} className="hover:bg-muted/5 transition-colors group">
+                      <td className="p-4 sticky left-0 bg-white/80 backdrop-blur-sm z-10 group-hover:bg-muted/10">
                         {student ? (
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-foreground leading-tight">
+                          <div className="flex flex-col min-w-[140px]">
+                            <span className="font-bold text-foreground text-sm leading-tight">
                               {student.firstName} {student.lastName}
                             </span>
                             <span className="text-[10px] uppercase font-mono text-muted-foreground mt-0.5">
@@ -99,61 +100,61 @@ export default function EnrollmentTable({
                           <span className="font-mono text-xs text-muted-foreground">{e.student_id.substring(0, 8)}...</span>
                         )}
                       </td>
-                      <td className="p-4 text-muted-foreground">{toDisplay(e.academic_year)}</td>
-                      <td className="p-4">
-                        <span className="px-2 py-1 rounded bg-secondary/50 text-secondary-foreground font-medium">
+                      <td className="p-4 text-muted-foreground whitespace-nowrap text-xs">{toDisplay(e.academic_year)}</td>
+                      <td className="p-4 whitespace-nowrap">
+                        <span className="px-2 py-1 rounded bg-secondary/30 text-secondary-foreground font-semibold text-xs border border-secondary/20">
                           {toDisplay(e.grade)}
                         </span>
                       </td>
-                      <td className="p-4">{toDisplay(e.section)}</td>
-                      <td className="p-4 text-center font-medium">{e.semester || '1'}</td>
-                      <td className="p-4 text-muted-foreground whitespace-nowrap font-mono text-[11px]">
+                      <td className="p-4 text-center whitespace-nowrap font-medium">{toDisplay(e.section)}</td>
+                      <td className="p-4 text-center font-bold text-primary/80">{e.semester || '1'}</td>
+                      <td className="p-4 text-muted-foreground whitespace-nowrap font-mono text-[10px]">
                         {e.enrollment_date ? e.enrollment_date.split('T')[0] : 'N/A'}
                       </td>
                       <td className="p-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight ${e.status === 'active' ? 'bg-green-100 text-green-700' :
-                          e.status === 'withdrawn' ? 'bg-red-100 text-red-700' :
-                            e.status === 'graduated' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter border ${e.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' :
+                          e.status === 'withdrawn' ? 'bg-red-50 text-red-700 border-red-200' :
+                            e.status === 'graduated' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-gray-50 text-gray-700 border-gray-200'
                           }`}>
                           {e.status}
                         </span>
                       </td>
                       <td className="p-4">
                         {promoStatus ? (
-                          <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${promoStatus === 'Eligible' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                            promoStatus === 'Conditional' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                              'bg-rose-50 text-rose-700 border border-rose-100'
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter border transition-all ${promoStatus === 'Eligible' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                            promoStatus === 'Conditional' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                              'bg-rose-50 text-rose-700 border-rose-200'
                             }`}>
                             {promoStatus}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground text-xs italic opacity-50">Not evaluated</span>
+                          <span className="text-muted-foreground text-[10px] italic opacity-40">Not evaluated</span>
                         )}
                       </td>
-                      <td className="p-4">
-                        <div className="flex gap-1 justify-end">
-                          <Button size="sm" variant="ghost" onClick={() => onEdit(e)} className="h-8 w-8 p-0" title="Edit">
-                            ✎
+                      <td className="p-4 sticky right-0 bg-white/80 backdrop-blur-sm z-10 group-hover:bg-muted/10 shadow-[-4px_0_12px_rgba(0,0,0,0.02)]">
+                        <div className="flex gap-1 justify-end items-center">
+                          <Button size="icon" variant="ghost" onClick={() => onEdit(e)} className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Edit">
+                            <Pencil className="h-3 w-3" />
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => onPromote(e)} className="h-8 text-[11px] px-2" title="Promote">
+                          <Button size="sm" variant="ghost" onClick={() => onPromote(e)} className="h-7 text-[10px] font-bold px-2 hover:bg-primary/5 hover:text-primary transition-colors" title="Promote">
                             Promote
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => onTransfer(e)} className="h-8 text-[11px] px-2" title="Transfer">
+                          <Button size="sm" variant="ghost" onClick={() => onTransfer(e)} className="h-7 text-[10px] font-bold px-2 hover:bg-amber-50 hover:text-amber-700 transition-colors" title="Transfer">
                             Transfer
                           </Button>
                           <PermissionGuard requiredRole="admin">
                             {e.is_active ? (
-                              <Button size="sm" variant="ghost" onClick={() => onArchive(e.id)} className="h-8 text-[11px] px-2 text-amber-600 hover:text-amber-700" title="Archive">
-                                Archive
+                              <Button size="icon" variant="ghost" onClick={() => onArchive(e.id)} className="h-7 w-7 text-amber-500 hover:text-amber-700 hover:bg-amber-50" title="Archive">
+                                <Archive className="h-3 w-3" />
                               </Button>
                             ) : (
-                              <Button size="sm" variant="ghost" onClick={() => onUnarchive(e.id)} className="h-8 text-[11px] px-2 text-green-600 hover:text-green-700" title="Unarchive">
-                                Unarchive
+                              <Button size="icon" variant="ghost" onClick={() => onUnarchive(e.id)} className="h-7 w-7 text-green-500 hover:text-green-700 hover:bg-green-50" title="Unarchive">
+                                <RotateCcw className="h-3 w-3" />
                               </Button>
                             )}
                           </PermissionGuard>
-                          <Button size="sm" variant="ghost" onClick={() => onDelete(e.id)} className="h-8 w-8 p-0 text-rose-500 hover:text-rose-700 hover:bg-rose-50" title="Delete">
-                            🗑
+                          <Button size="icon" variant="ghost" onClick={() => onDelete(e.id)} className="h-7 w-7 text-rose-400 hover:text-rose-700 hover:bg-rose-50" title="Delete">
+                            <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
                       </td>

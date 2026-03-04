@@ -12,14 +12,14 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useSuperAdminService } from '@/services/api/super-admin-service';
 import {
-  TenantStats,
-  UserStats,
-  SystemMetrics,
-  RecentTenant,
-  UserWithRoles,
-  Role,
-  RoleStats
-} from '@/services/api/super-admin-service';
+  useSuperAdminTenantStats,
+  useSuperAdminUserStats,
+  useSuperAdminSystemMetrics,
+  useSuperAdminRecentTenants,
+  useSuperAdminUserList,
+  useSuperAdminRoles,
+  useSuperAdminRoleStatistics
+} from '@/hooks/queries/super-admin';
 
 // Dynamic role type - no longer static
 type UserRole = string;
@@ -32,23 +32,20 @@ interface FilterState {
 }
 
 export default function SuperAdminDashboard() {
-
   const { user: currentUser } = useAuth();
-  // Use the hook to get the service
-  const superAdminService = useSuperAdminService();
 
-  // State management
-  const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
-  const [tenantStats, setTenantStats] = useState<TenantStats | null>(null);
-  const [userStats, setUserStats] = useState<UserStats | null>(null);
-  const [recentTenants, setRecentTenants] = useState<RecentTenant[]>([]);
-  const [users, setUsers] = useState<UserWithRoles[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [roleStats, setRoleStats] = useState<RoleStats[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // TanStack Query Hooks
+  const { data: tenantStats, isLoading: tenantLoading } = useSuperAdminTenantStats();
+  const { data: userStats, isLoading: userLoading } = useSuperAdminUserStats();
+  const { data: systemMetrics, isLoading: systemLoading } = useSuperAdminSystemMetrics({ refetchInterval: 30000 });
+  const { data: recentTenants, isLoading: recentLoading } = useSuperAdminRecentTenants();
+  const { data: roles, isLoading: rolesLoading } = useSuperAdminRoles();
+  const { data: roleStats, isLoading: roleStatsLoading } = useSuperAdminRoleStatistics();
 
-  // Add pagination state
+  // Fetch users with a high limit for the overview table/analytics
+  const { data: users, isLoading: usersLoading, refetch: refetchUsers } = useSuperAdminUserList({ limit: 1000 });
+
+  // Page state for filters and pagination
   const [currentPage, setCurrentPage] = useState(1);
   const usersPerPage = 10;
 
@@ -59,50 +56,7 @@ export default function SuperAdminDashboard() {
     dateRange: 'all'
   });
 
-  // Fetch data on component mount
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // Fetch all data in parallel
-        const [metricsData, tenantData, userData, tenantsData, usersData, rolesData] = await Promise.all([
-          superAdminService.getSystemMetrics(),
-          superAdminService.getTenantStats(),
-          superAdminService.getUserStats(),
-          superAdminService.getRecentTenants(),
-          superAdminService.getUserList({ limit: 1000 }), // Get more users for better analytics
-          superAdminService.getRoles()
-        ]);
-
-        console.log('[Dashboard] Metrics:', metricsData);
-        console.log('[Dashboard] Tenants:', tenantsData);
-        console.log('[Dashboard] Users:', usersData);
-        console.log('[Dashboard] Roles:', rolesData);
-
-        setSystemMetrics(metricsData);
-        setTenantStats(tenantData);
-        setUserStats(userData);
-        setRecentTenants(Array.isArray(tenantsData) ? tenantsData : []);
-        setUsers(Array.isArray(usersData) ? usersData : []);
-        setRoles(Array.isArray(rolesData) ? rolesData : []);
-
-        // Calculate role statistics from user data
-        const roleStatsData = await superAdminService.getRoleStatistics();
-        console.log('[Dashboard] Role Stats:', roleStatsData);
-        setRoleStats(Array.isArray(roleStatsData) ? roleStatsData : []);
-
-      } catch (err) {
-        console.error('Error fetching dashboard data:', err);
-        setError('Failed to load dashboard data. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [superAdminService]);
+  const isLoading = tenantLoading || userLoading || systemLoading || recentLoading || rolesLoading || usersLoading || roleStatsLoading;
 
   // Filter functions with null safety
   const filteredUsers = Array.isArray(users) ? users.filter(user => {
@@ -163,18 +117,10 @@ export default function SuperAdminDashboard() {
     return roleColors[roleName] || 'bg-gray-100 text-gray-800';
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-lg">Loading dashboard...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg text-red-600">{error}</div>
       </div>
     );
   }
@@ -184,7 +130,7 @@ export default function SuperAdminDashboard() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Welcome, {currentUser?.firstName || 'User'}!</h1>
-        <Button onClick={() => window.location.reload()}>Refresh Data</Button>
+        <Button onClick={() => refetchUsers()}>Refresh Data</Button>
       </div>
 
       {/* Filters */}

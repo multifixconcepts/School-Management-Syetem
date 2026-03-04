@@ -1012,7 +1012,7 @@ def add_permissions_to_role(
     
     # Add permissions to role
     permission_ids = [p.id for p in permissions]
-    return user_role_crud.add_permissions_to_role(db, role_id=role_id, permission_ids=permission_ids)
+    return user_role_crud.set_permissions_to_role(db, role_id=role_id, permission_ids=permission_ids)
 
 @router.get("/permissions", response_model=List[Permission])
 def get_all_permissions(

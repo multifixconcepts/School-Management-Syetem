@@ -49,6 +49,8 @@ async def get_exams(
     grade_id: Optional[UUID] = None,
     section_id: Optional[UUID] = None,
     academic_year_id: Optional[UUID] = None,
+    period_id: Optional[UUID] = Query(None, description="Optional filter by period"),
+    semester_id: Optional[UUID] = Query(None, description="Optional filter by semester"),
     is_published: Optional[bool] = None
 ) -> Any:
     """Get all exams for a tenant with optional filtering."""
@@ -63,6 +65,10 @@ async def get_exams(
         filters["section_id"] = section_id
     if academic_year_id:
         filters["academic_year_id"] = academic_year_id
+    if period_id:
+        filters["period_id"] = period_id
+    if semester_id:
+        filters["semester_id"] = semester_id
     if is_published is not None:
         filters["is_published"] = is_published
 

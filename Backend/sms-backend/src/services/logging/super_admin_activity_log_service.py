@@ -16,7 +16,7 @@ class SuperAdminActivityLogService:
     def __init__(self, db: Session):
         self.db = db
     
-    def log_super_admin_activity(
+    async def log_super_admin_activity(
         self, 
         user_id: Optional[UUID], 
         action: str, 

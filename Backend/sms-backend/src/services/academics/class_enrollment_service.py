@@ -95,6 +95,17 @@ class ClassEnrollmentService:
         if existing and existing.is_active and existing.status == "active":
             raise DuplicateEntityError("ClassEnrollment", "unique_student_class_year", "active duplicate")
 
+        if existing:
+            # Reactivate and update existing record
+            return await self.update(
+                id=existing.id,
+                obj_in=ClassEnrollmentUpdate(
+                    enrollment_date=obj_in.enrollment_date,
+                    status="active",
+                    is_active=True
+                )
+            )
+
         enroll = ClassEnrollment(
             tenant_id=self.tenant_id,
             student_id=obj_in.student_id,
@@ -102,7 +113,7 @@ class ClassEnrollmentService:
             academic_year_id=obj_in.academic_year_id,
             enrollment_date=obj_in.enrollment_date or date.today(),
             status=obj_in.status or "active",
-            is_active=obj_in.is_active if obj_in.is_active is not None else True,
+            is_active=True,
         )
         try:
             self.db.add(enroll)

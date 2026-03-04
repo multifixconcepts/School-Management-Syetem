@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Eye, Edit, Trash2, UserCheck, UserX, UserPlus, KeyRound } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, Eye, Edit, Trash2, UserCheck, UserX, UserPlus, KeyRound, ChevronLeft, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { useTenantNavigation } from '@/hooks/use-tenant';
 import { Student } from '@/types/student';
@@ -7,6 +7,7 @@ import { Enrollment } from '@/types/enrollment';
 import { useStudents } from '@/hooks/queries/students';
 import { useBulkCurrentEnrollments, useEnrollmentGrades, useEnrollmentSections } from '@/hooks/queries/enrollments';
 import { useQueryClient } from '@tanstack/react-query';
+import Pagination from '@/components/common/Pagination';
 
 interface StudentListProps {
   onEdit?: (student: Student) => void;
@@ -19,6 +20,8 @@ interface StudentListProps {
 }
 
 export default function StudentList({ onEdit, onView, onDelete, onStatusToggle, onAssign, onBulkDelete, onResetPassword }: StudentListProps) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [filters, setFilters] = useState({
     search: '',
     grade: 'all',
@@ -31,17 +34,24 @@ export default function StudentList({ onEdit, onView, onDelete, onStatusToggle, 
   const queryClient = useQueryClient();
 
   const queryParams = useMemo(() => {
-    const params: { grade?: string; section?: string; status?: string; search?: string } = {};
+    const params: { grade?: string; section?: string; status?: string; search?: string; skip: number; limit: number } = {
+      skip: (currentPage - 1) * pageSize,
+      limit: pageSize
+    };
     if (filters.grade && filters.grade !== 'all') params.grade = filters.grade;
     if (filters.section && filters.section !== 'all') params.section = filters.section;
     if (filters.status && filters.status !== 'all') params.status = filters.status;
     if (filters.search) params.search = filters.search;
     return params;
-  }, [filters]);
+  }, [filters, currentPage, pageSize]);
 
-  const { data: students = [], isLoading: studentsLoading, isError, error: studentsError } = useStudents(queryParams);
+  const { data: studentsData, isLoading: studentsLoading, isError, error: studentsError } = useStudents(queryParams);
 
-  const studentIds = useMemo(() => students.map(s => s.id), [students]);
+  const students = useMemo(() => studentsData?.items || [], [studentsData]);
+  const totalItems = studentsData?.total || 0;
+  const totalPages = Math.ceil(totalItems / pageSize);
+
+  const studentIds = useMemo(() => students.map((s: Student) => s.id), [students]);
 
   const { data: enrollmentsMap = new Map<string, Enrollment>(), isLoading: enrollmentsLoading } = useBulkCurrentEnrollments(studentIds);
 
@@ -52,7 +62,7 @@ export default function StudentList({ onEdit, onView, onDelete, onStatusToggle, 
     if (selectedIds.size === students.length && students.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(students.map(s => s.id)));
+      setSelectedIds(new Set(students.map((s: Student) => s.id)));
     }
   };
 
@@ -69,6 +79,7 @@ export default function StudentList({ onEdit, onView, onDelete, onStatusToggle, 
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     setSelectedIds(new Set()); // Clear selection on filter change
+    setCurrentPage(1); // Reset to first page on filter change
   };
 
   const handleRetry = () => {
@@ -173,10 +184,10 @@ export default function StudentList({ onEdit, onView, onDelete, onStatusToggle, 
       {/* Students Table */}
       <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 table-fixed">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left">
+                <th className="px-6 py-3 text-left sticky left-0 z-10 bg-gray-50 border-r w-16">
                   <input
                     type="checkbox"
                     checked={students.length > 0 && selectedIds.size === students.length}
@@ -184,22 +195,22 @@ export default function StudentList({ onEdit, onView, onDelete, onStatusToggle, 
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
                   />
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-16 z-10 bg-gray-50 border-r w-64 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
                   Student
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
                   Admission No.
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
                   Academic Year
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
                   Grade/Section
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
                   Actions
                 </th>
               </tr>
@@ -221,12 +232,12 @@ export default function StudentList({ onEdit, onView, onDelete, onStatusToggle, 
                   </td>
                 </tr>
               ) : (
-                students.map((student) => {
+                students.map((student: Student) => {
                   const enrollment = enrollmentsMap.get(student.id);
                   const isSelected = selectedIds.has(student.id);
                   return (
-                    <tr key={student.id} className={`hover:bg-gray-50 transition-colors ${isSelected ? 'bg-blue-50/30' : ''}`}>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                    <tr key={student.id} className={`hover:bg-gray-50 transition-colors ${isSelected ? 'bg-blue-50/30 font-medium' : ''}`}>
+                      <td className="px-6 py-4 whitespace-nowrap sticky left-0 z-10 bg-inherit border-r">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -234,7 +245,7 @@ export default function StudentList({ onEdit, onView, onDelete, onStatusToggle, 
                           className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
                         />
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-6 py-4 whitespace-nowrap sticky left-16 z-10 bg-inherit border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center">
                           <div className="flex-shrink-0 h-10 w-10">
                             {student.photo ? (
@@ -357,7 +368,7 @@ export default function StudentList({ onEdit, onView, onDelete, onStatusToggle, 
                                 ? 'text-red-600 hover:text-red-900'
                                 : 'text-green-600 hover:text-green-900'
                                 }`}
-                              title={student.status === 'active' ? 'Deactivate' : 'Activate'}
+                              title={student.status === 'active' ? 'Archive Student' : 'Restore Student'}
                             >
                               {student.status === 'active' ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                             </button>
@@ -380,6 +391,21 @@ export default function StudentList({ onEdit, onView, onDelete, onStatusToggle, 
             </tbody>
           </table>
         </div>
+        {totalItems > 0 && (
+          <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              Showing <span className="font-medium">{(currentPage - 1) * pageSize + 1}</span> to{' '}
+              <span className="font-medium">{Math.min(currentPage * pageSize, totalItems)}</span> of{' '}
+              <span className="font-medium">{totalItems}</span> students
+            </div>
+            <Pagination
+              currentPage={currentPage}
+              totalItems={totalItems}
+              itemsPerPage={pageSize}
+              onPageChange={setCurrentPage}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -90,13 +90,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const tenantId = contextualCookies.get('tenantId', context);
 
     try {
-      const response = await axios.post('/api/auth/refresh', {}, {
-        headers: {
-          'Authorization': `Bearer ${storedRefreshToken}`,
-          ...(tenantId && { 'X-Tenant-ID': tenantId }),
-        },
-        timeout: 90000,
-      });
+      const response = await axios.post('/api/auth/refresh',
+        { refresh_token: storedRefreshToken },
+        {
+          headers: {
+            'Authorization': `Bearer ${storedRefreshToken}`,
+            ...(tenantId && { 'X-Tenant-ID': tenantId }),
+          },
+          timeout: 90000,
+        }
+      );
 
       const data = response.data;
 
@@ -127,6 +130,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isFetchingUser.current || user) return;
 
     const loadAuthData = async () => {
+      if (isFetchingUser.current || user || isLoggingOut) {
+        if (!user && !isLoggingOut) setIsLoading(false);
+        return;
+      }
       isFetchingUser.current = true;
       setIsLoading(true);
 
@@ -608,7 +615,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       validateTokenBeforeRequest,
       refetchUser,
       updateUser,
-      isLoggingOut // Expose to consumers
+      isLoggingOut
     }}>
       {children}
     </AuthContext.Provider>

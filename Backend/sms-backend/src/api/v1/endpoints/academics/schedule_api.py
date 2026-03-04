@@ -73,6 +73,15 @@ async def get_schedules(
     
     return await schedule_service.list(skip=skip, limit=limit, filters=filters)
 
+@router.get("/schedules/my-schedule", response_model=List[Schedule])
+async def get_my_schedule(
+    *,
+    schedule_service: ScheduleService = Depends(get_schedule_service),
+    current_user: User = Depends(has_any_role(["teacher"]))
+) -> Any:
+    """Get the logged-in teacher's personal schedule."""
+    return await schedule_service.get_teacher_schedule(teacher_id=current_user.id)
+
 @router.get("/schedules/{schedule_id}", response_model=Schedule)
 async def get_schedule(
     *,
@@ -126,6 +135,7 @@ async def delete_schedule(
             detail=f"Schedule with ID {schedule_id} not found"
         )
     return await schedule_service.delete(id=schedule_id)
+
 
 @router.get("/super-admin/schedules", response_model=List[ScheduleWithDetails])
 async def get_all_schedules(

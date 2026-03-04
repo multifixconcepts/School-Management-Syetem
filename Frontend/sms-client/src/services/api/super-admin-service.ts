@@ -1,6 +1,7 @@
 import { useSuperAdminApiClient } from './super-admin-api-client';
 import { useMemo } from 'react';
 import { useTenant } from '@/hooks/use-tenant';
+import { toast } from 'sonner';
 
 // Define types for dashboard data
 export interface TenantStats {
@@ -96,10 +97,11 @@ export interface UserCreateCrossTenant {
   first_name: string;
   last_name: string;
   email: string;
-  role: string;
+  password?: string;
+  role?: string;
+  role_id?: string;
   tenant_id: string;
-  password: string;
-  is_active: boolean;
+  is_active?: boolean;
 }
 
 export interface UserCreateResponse {
@@ -166,6 +168,16 @@ export function useSuperAdminService() {
       return apiClient.get<TenantStats>('/super-admin/dashboard/tenant-stats');
     },
 
+    // Get all tenants
+    getTenants: async (params?: { skip?: number; limit?: number }): Promise<PaginatedResponse<RecentTenant>> => {
+      const queryParams = new URLSearchParams();
+      if (params?.skip !== undefined) queryParams.append('skip', params.skip.toString());
+      if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
+
+      const url = `/super-admin/tenants${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      return apiClient.get<PaginatedResponse<RecentTenant>>(url);
+    },
+
     // Get user statistics
     getUserStats: async (): Promise<UserStats> => {
       return apiClient.get<UserStats>('/super-admin/dashboard/user-stats');
@@ -225,7 +237,7 @@ export function useSuperAdminService() {
       if (params?.start_date) queryParams.append('start_date', params.start_date);
       if (params?.end_date) queryParams.append('end_date', params.end_date);
 
-      const url = `/logging/super-admin/audit-logs${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const url = `/v1/logging/super-admin/audit-logs${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
       return apiClient.get<AuditLog[]>(url);
     },
 
@@ -253,7 +265,7 @@ export function useSuperAdminService() {
       if (params?.end_date) queryParams.append('end_date', params.end_date);
       if (params?.log_type) queryParams.append('log_type', params.log_type);
 
-      const url = `/logging/super-admin/audit-logs/all${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const url = `/v1/logging/super-admin/audit-logs/all${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
       return apiClient.get<AuditLog[]>(url);
     },
 
@@ -324,9 +336,19 @@ export function useSuperAdminService() {
     },
 
     // Update user
-    updateUser: async (userId: string, userData: UserUpdate): Promise<UserWithRoles> => {
+    updateUser: async (userId: string, userData: UserUpdate, tenant_id?: string): Promise<UserWithRoles> => {
       const url = `/super-admin/users/${userId}`;
       return apiClient.put<UserWithRoles>(url, userData);
+    },
+
+    // Activate tenant
+    activateTenant: async (tenantId: string): Promise<void> => {
+      return apiClient.post<void>(`/super-admin/tenants/${tenantId}/activate`, {});
+    },
+
+    // Deactivate tenant
+    deactivateTenant: async (tenantId: string): Promise<void> => {
+      return apiClient.post<void>(`/super-admin/tenants/${tenantId}/deactivate`, {});
     },
   }), [apiClient]);
 }

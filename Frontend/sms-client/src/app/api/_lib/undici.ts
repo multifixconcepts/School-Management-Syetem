@@ -30,8 +30,8 @@ export async function configureUndici(): Promise<void> {
       bodyTimeout: 0,
     });
 
-    setGlobalDispatcher(agent);
-    globalThis.__undiciConfigured = true;
+    // setGlobalDispatcher(agent);
+    // globalThis.__undiciConfigured = true;
   } catch (err) {
     // If 'undici' is not installed, skip configuration silently.
     // Optional: uncomment for diagnostics.

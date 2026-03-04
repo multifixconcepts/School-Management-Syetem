@@ -10,6 +10,10 @@ import { useEnrollmentService } from '@/services/api/enrollment-service';
 import { useStudentGradeService } from '@/services/api/student-grade-service';
 import { useGradingService, GradingSchema } from '@/services/api/grading-service';
 import { useAuth } from '@/hooks/use-auth';
+import { usePeriodService } from '@/services/api/period-service';
+import { useSemesterService } from '@/services/api/semester-service';
+import { useGradableActivities, useClassPerformance, useSemesters, usePeriods } from '@/hooks/queries/grading-hub';
+import { useGradingSchemas } from '@/hooks/queries/grading';
 import {
     Card,
     CardContent,
@@ -87,32 +91,50 @@ export default function GradingHubPage() {
     const enrollmentService = useEnrollmentService();
     const gradeService = useStudentGradeService();
     const gradingService = useGradingService();
+    const periodService = usePeriodService();
+    const semesterService = useSemesterService();
     const { user } = useAuth();
 
-    const [loading, setLoading] = useState(false);
     const [academicYears, setAcademicYears] = useState<any[]>([]);
     const [classes, setClasses] = useState<any[]>([]);
     const [subjects, setSubjects] = useState<any[]>([]);
-
-    // Filter states
     const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
     const [selectedClassId, setSelectedClassId] = useState<string>('all');
     const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
-    const [searchTerm, setSearchTerm] = useState('');
 
-    // Data states
-    const [activities, setActivities] = useState<GradableActivity[]>([]);
+    // Period & Semester Selection State
+    const [selectedSemesterId, setSelectedSemesterId] = useState<string>('all');
+    const [selectedPeriodId, setSelectedPeriodId] = useState<string>('all');
+
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Marks Entry Dialog state
     const [isMarksEntryOpen, setIsMarksEntryOpen] = useState(false);
     const [selectedActivity, setSelectedActivity] = useState<GradableActivity | null>(null);
 
-    // Performance states
-    const [performanceData, setPerformanceData] = useState<any[]>([]);
-    const [performanceLoading, setPerformanceLoading] = useState(false);
+    // Unified Grading Hub hooks
+    const { data: semesters = [] } = useSemesters(selectedAcademicYear);
+    const { data: periods = [] } = usePeriods(selectedSemesterId);
 
-    // Grading Schema states
-    const [gradingSchemas, setGradingSchemas] = useState<GradingSchema[]>([]);
+    const {
+        data: activities = [],
+        isLoading: activitiesLoading,
+        refetch: refetchActivities
+    } = useGradableActivities({
+        academic_year_id: selectedAcademicYear,
+        subject_id: selectedSubjectId,
+        teacher_id: user?.role?.toLowerCase() === 'teacher' ? user?.id : undefined,
+        period_id: selectedPeriodId,
+        semester_id: selectedSemesterId,
+    });
+
+    const {
+        data: performanceData = [],
+        isLoading: performanceLoading,
+        refetch: refetchPerformance
+    } = useClassPerformance(selectedClassId, selectedSubjectId, selectedAcademicYear, classes, selectedPeriodId, selectedSemesterId);
+
+    const { data: gradingSchemas = [] } = useGradingSchemas();
     const [showSchemaPanel, setShowSchemaPanel] = useState(false);
 
     // Assessment Creator Modal state
@@ -123,17 +145,15 @@ export default function GradingHubPage() {
             const isTeacher = user?.role?.toLowerCase() === 'teacher';
             const teacherId = isTeacher ? user?.id : undefined;
 
-            const [ayList, clsList, subList, schemas] = await Promise.all([
+            const [ayList, clsList, subList] = await Promise.all([
                 enrollmentService.getAcademicYears(),
                 classService.getClasses({ teacher_id: teacherId }),
                 subjectService.getActiveSubjects(),
-                gradingService.getGradingSchemas()
             ]);
 
             setAcademicYears(ayList || []);
             setClasses(clsList || []);
             setSubjects(subList || []);
-            setGradingSchemas(schemas || []);
 
             const current = (ayList || []).find((ay: any) => ay.is_current);
             if (current) setSelectedAcademicYear(current.id);
@@ -146,143 +166,21 @@ export default function GradingHubPage() {
         loadInitialData();
     }, []);
 
-    const fetchActivities = useCallback(async () => {
-        if (!selectedAcademicYear) return;
-        setLoading(true);
-        try {
-            const filters: any = {
-                academic_year_id: selectedAcademicYear,
-                is_published: true
-            };
-            if (selectedSubjectId !== 'all') filters.subject_id = selectedSubjectId;
-            if (selectedClassId !== 'all') {
-                const cls = classes.find(c => c.id === selectedClassId);
-                if (cls) {
-                    filters.grade_id = cls.grade_id;
-                    filters.section_id = cls.section_id;
-                }
-            }
-
-            const [exams, assignments, assessments] = await Promise.all([
-                examService.getExams(filters),
-                assignmentService.getAssignments(filters),
-                assessmentService.getAssessments({
-                    subject_id: filters.subject_id,
-                    grade_id: filters.grade_id,
-                    academic_year_id: filters.academic_year_id
-                })
-            ]);
-
-            const combined: GradableActivity[] = [
-                ...(exams || []).map(e => ({
-                    id: e.id,
-                    title: e.title,
-                    type: 'EXAM',
-                    date: e.exam_date,
-                    subjectId: e.subject_id,
-                    gradeId: e.grade_id,
-                    sectionId: e.section_id,
-                    maxScore: e.max_score,
-                    source: 'exam' as const
-                })),
-                ...(assignments || []).map(a => ({
-                    id: a.id,
-                    title: a.title,
-                    type: 'ASSIGNMENT',
-                    date: a.due_date,
-                    subjectId: a.subject_id,
-                    gradeId: a.grade_id,
-                    sectionId: a.section_id,
-                    maxScore: a.max_score,
-                    source: 'assignment' as const
-                })),
-                ...(assessments || []).map(a => ({
-                    id: a.id,
-                    title: a.title,
-                    type: a.type,
-                    date: a.assessment_date,
-                    subjectId: a.subject_id,
-                    gradeId: a.grade_id,
-                    sectionId: a.section_id,
-                    maxScore: a.max_score,
-                    source: 'assessment' as const
-                }))
-            ];
-
-            // For each activity, we could fetch grading progress if needed, 
-            // but for now, let's keep it simple to ensure we address the "integrated marking" objective.
-
-            setActivities(combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-        } catch (err) {
-            console.error('Failed to fetch gradable activities:', err);
-            toast.error('Failed to load gradable activities');
-        } finally {
-            setLoading(false);
+    // Selection resets
+    useEffect(() => {
+        if (selectedAcademicYear) {
+            setSelectedSemesterId('all');
         }
-    }, [selectedAcademicYear, selectedSubjectId, selectedClassId, classes]);
+    }, [selectedAcademicYear]);
 
     useEffect(() => {
-        fetchActivities();
-    }, [fetchActivities]);
-
-    const fetchPerformance = useCallback(async () => {
-        if (!selectedAcademicYear || selectedClassId === 'all' || selectedSubjectId === 'all') {
-            setPerformanceData([]);
-            return;
+        if (selectedSemesterId) {
+            setSelectedPeriodId('all');
         }
+    }, [selectedSemesterId]);
 
-        setPerformanceLoading(true);
-        try {
-            // First get all enrolled students for this class/subject
-            const cls = classes.find(c => c.id === selectedClassId);
-            const enrollmentRes = await enrollmentService.getEnrollments(0, 300, {
-                academic_year_id: selectedAcademicYear,
-                grade_id: cls?.grade_id,
-                section_id: cls?.section_id,
-            });
 
-            const enrollments = (enrollmentRes as any).items || [];
-
-            if (!enrollments?.length) {
-                setPerformanceData([]);
-                return;
-            }
-
-            // Fetch summaries for each student (Batching this would be better but for now let's use the new endpoint)
-            const summaries = await Promise.all(
-                enrollments.map(async (en: any) => {
-                    try {
-                        const summary = await gradeService.getSubjectSummary(en.student_id, selectedSubjectId, selectedAcademicYear);
-                        return {
-                            studentId: en.student_id,
-                            studentName: en.student_name,
-                            ...summary
-                        };
-                    } catch (e) {
-                        return {
-                            studentId: en.student_id,
-                            studentName: en.student_name,
-                            cumulative_percentage: 0,
-                            letter_grade: 'N/A'
-                        };
-                    }
-                })
-            );
-
-            setPerformanceData(summaries);
-        } catch (err) {
-            console.error('Failed to fetch performance data:', err);
-            toast.error('Failed to load performance summaries');
-        } finally {
-            setPerformanceLoading(false);
-        }
-    }, [selectedAcademicYear, selectedClassId, selectedSubjectId, classes]);
-
-    useEffect(() => {
-        if (selectedClassId !== 'all' && selectedSubjectId !== 'all') {
-            fetchPerformance();
-        }
-    }, [fetchPerformance]);
+    // Use hooks for activities data fetching - no longer need manual fetch effects
 
     const filteredActivities = useMemo(() => {
         if (!searchTerm) return activities;
@@ -314,8 +212,13 @@ export default function GradingHubPage() {
                     >
                         <Plus className="w-4 h-4" /> Create Assessment
                     </Button>
-                    <Button variant="outline" className="gap-2" onClick={fetchActivities} disabled={loading}>
-                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Sync Data
+                    <Button
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() => { refetchActivities(); refetchPerformance(); }}
+                        disabled={activitiesLoading || performanceLoading}
+                    >
+                        <RefreshCw className={`w-4 h-4 ${activitiesLoading || performanceLoading ? 'animate-spin' : ''}`} /> Sync Data
                     </Button>
                 </div>
             </div>
@@ -352,8 +255,34 @@ export default function GradingHubPage() {
                             <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId}>
                                 <SelectTrigger><SelectValue placeholder="All Subjects" /></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">All Subjects</SelectItem>
-                                    {subjects.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    <SelectItem value="all">All My Subjects</SelectItem>
+                                    {(() => {
+                                        // Filter subjects to only those taught by the teacher in their assigned classes
+                                        const teacherSubjectIds = new Set(classes.flatMap(c => c.subjects?.map((cs: any) => cs.subject_id) || [c.subject_id]));
+                                        return subjects
+                                            .filter(s => teacherSubjectIds.has(s.id))
+                                            .map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>);
+                                    })()}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex-1 min-w-[150px]">
+                            <Label className="text-[10px] uppercase font-bold text-gray-400 mb-1.5 block">Semester</Label>
+                            <Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}>
+                                <SelectTrigger><SelectValue placeholder="All Semesters" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Full Academic Year</SelectItem>
+                                    {semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex-1 min-w-[150px]">
+                            <Label className="text-[10px] uppercase font-bold text-gray-400 mb-1.5 block">Period</Label>
+                            <Select value={selectedPeriodId} onValueChange={setSelectedPeriodId}>
+                                <SelectTrigger><SelectValue placeholder="All Periods" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Full Semester</SelectItem>
+                                    {periods.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -486,7 +415,7 @@ export default function GradingHubPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {loading ? (
+                                    {activitiesLoading ? (
                                         <TableRow>
                                             <TableCell colSpan={6} className="h-40 text-center text-muted-foreground">
                                                 <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 opacity-20" />
@@ -519,7 +448,12 @@ export default function GradingHubPage() {
                                             <TableCell className="text-xs text-gray-600">
                                                 <div className="flex items-center gap-2">
                                                     <Calendar className="w-3 h-3" />
-                                                    {format(new Date(activity.date), 'MMM dd, yyyy')}
+                                                    {activity.date ? (
+                                                        (() => {
+                                                            const d = new Date(activity.date);
+                                                            return isNaN(d.getTime()) ? 'Invalid Date' : format(d, 'MMM dd, yyyy');
+                                                        })()
+                                                    ) : 'No Date Set'}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-center font-bold text-gray-500">
@@ -556,7 +490,7 @@ export default function GradingHubPage() {
                                 {selectedClassId === 'all' || selectedSubjectId === 'all' ? (
                                     <Badge variant="outline" className="text-amber-600 bg-amber-50">Please select a Class and Subject to view summaries</Badge>
                                 ) : (
-                                    <Button size="sm" variant="ghost" className="gap-2" onClick={fetchPerformance}>
+                                    <Button size="sm" variant="ghost" className="gap-2" onClick={() => refetchPerformance()}>
                                         <RefreshCw className={`w-3 h-3 ${performanceLoading ? 'animate-spin' : ''}`} /> Refresh
                                     </Button>
                                 )}
@@ -653,7 +587,6 @@ export default function GradingHubPage() {
                     onClose={() => {
                         setIsMarksEntryOpen(false);
                         setSelectedActivity(null);
-                        fetchActivities(); // Refresh to potentially show progress in future
                     }}
                     examId={selectedActivity.id}
                     examTitle={selectedActivity.title}
@@ -663,6 +596,7 @@ export default function GradingHubPage() {
                     academicYearId={selectedAcademicYear}
                     maxScore={selectedActivity.maxScore}
                     assessmentType={selectedActivity.type as any}
+                    assessmentDate={selectedActivity.date}
                 />
             )}
 
@@ -672,7 +606,7 @@ export default function GradingHubPage() {
                 onClose={() => setIsAssessmentModalOpen(false)}
                 onSuccess={() => {
                     setIsAssessmentModalOpen(false);
-                    fetchActivities(); // Refresh the activity list
+                    refetchActivities(); // Refresh the activity list
                 }}
                 selectedAcademicYearId={selectedAcademicYear}
                 teacherId={user?.id}

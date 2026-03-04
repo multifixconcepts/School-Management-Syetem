@@ -5,7 +5,7 @@ import { normalizeBaseUrl, createTimeoutSignal } from '@/app/api/_lib/http';
 export async function GET(request: NextRequest) {
   try {
     console.log('[Enrollments API] Processing GET request');
-    
+
     // Get search parameters
     const { searchParams } = new URL(request.url);
     const skip = searchParams.get('skip') || '0';
@@ -36,10 +36,10 @@ export async function GET(request: NextRequest) {
     } else {
       // DEFAULT context
       const cookies = request.headers.get('cookie') || '';
-      
+
       const tenantMatch = cookies.match(/tn_tenantId=([^;]+)/);
       const tokenMatch = cookies.match(/(?:^|; )accessToken=([^;]+)|tn_accessToken=([^;]+)/);
-      
+
       tenantId = tenantMatch ? tenantMatch[1] : null;
       accessToken = tokenMatch ? (tokenMatch[1] || tokenMatch[2]) : null;
     }
@@ -87,10 +87,9 @@ export async function GET(request: NextRequest) {
       },
       signal,
     });
-    cancel();
-
     if (!response.ok) {
       const errorText = await response.text();
+      cancel();
       console.error('[Enrollments API] Backend error:', response.status, errorText);
       return NextResponse.json(
         { error: `Backend error: ${response.status}` },
@@ -99,6 +98,7 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
+    cancel();
     return NextResponse.json(data);
 
   } catch (error) {
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     console.log('[Enrollments API] Processing POST request');
-    
+
     // Get authentication context
     const context = request.headers.get('x-auth-context') || 'DEFAULT';
     console.log('[Enrollments API] Auth context:', context);
@@ -134,10 +134,10 @@ export async function POST(request: NextRequest) {
     } else {
       // DEFAULT context
       const cookies = request.headers.get('cookie') || '';
-      
+
       const tenantMatch = cookies.match(/tn_tenantId=([^;]+)/);
       const tokenMatch = cookies.match(/(?:^|; )accessToken=([^;]+)|tn_accessToken=([^;]+)/);
-      
+
       tenantId = tenantMatch ? tenantMatch[1] : null;
       accessToken = tokenMatch ? (tokenMatch[1] || tokenMatch[2]) : null;
     }
@@ -175,8 +175,6 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(body),
       signal,
     });
-    cancel();
-
     if (!response.ok) {
       // Forward backend error details instead of a generic message
       const contentType = response.headers.get('content-type') || '';
@@ -189,6 +187,7 @@ export async function POST(request: NextRequest) {
         errorData = text ? { detail: text } : null;
       }
 
+      cancel();
       console.error('[Enrollments API] Backend error:', response.status, errorData || response.statusText);
       return NextResponse.json(
         errorData || { error: `Backend error: ${response.status}` },
@@ -197,6 +196,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
+    cancel();
     return NextResponse.json(data);
 
   } catch (error) {

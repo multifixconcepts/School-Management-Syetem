@@ -50,16 +50,16 @@ export async function GET(request: NextRequest) {
       },
       signal,
     });
-    cancel();
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({
         message: 'Failed to fetch academic grades'
       }));
+      cancel();
       return NextResponse.json(errorData, { status: response.status });
     }
 
     const data = await response.json();
+    cancel();
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Academic grades API error:', error);
@@ -117,16 +117,16 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(body),
       signal,
     });
-    cancel();
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({
         message: 'Failed to create academic grade'
       }));
+      cancel();
       return NextResponse.json(errorData, { status: response.status });
     }
 
     const data = await response.json();
+    cancel();
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
     console.error('Academic grades POST error:', error);

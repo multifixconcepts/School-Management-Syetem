@@ -108,6 +108,11 @@ class StudentCreateResponse(Student):
     class Config:
         from_attributes = True
 
+class StudentListResponse(BaseModel):
+    """Schema for paginated student list."""
+    items: List[Student]
+    total: int
+
 class StudentBulkDelete(BaseModel):
     """Schema for bulk student deletion."""
     student_ids: List[UUID]

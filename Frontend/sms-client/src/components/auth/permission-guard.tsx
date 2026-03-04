@@ -21,7 +21,7 @@ export default function PermissionGuard({
   const { user } = useAuth();
   const router = useRouter();
   const { createTenantPath } = useTenantNavigation();
-  
+
   // Modify the useEffect to handle super-admin users differently
   useEffect(() => {
     if (!user) {
@@ -35,19 +35,19 @@ export default function PermissionGuard({
       }
     }
   }, [user, router, createTenantPath]);
-  
+
   // If no user is logged in, return null until the redirect happens
   if (!user) {
     return null;
   }
-  
+
   // DEVELOPMENT MODE: Allow access to all pages during development
   // Remove or comment this line in production
   const isDevelopment = process.env.NODE_ENV === 'development';
   if (isDevelopment) {
     return <>{children}</>;
   }
-  
+
   // Check if user has the required role - handle different possible structures
   const normalizeRoleName = (name?: string) => {
     const lower = (name || '').toLowerCase();
@@ -57,7 +57,7 @@ export default function PermissionGuard({
     if (['admin', 'tenant-admin', 'financial-admin', 'academic-admin'].includes(lower)) return 'admin';
     return lower;
   };
-  
+
   const normalizedRoles = new Set<string>();
   if (typeof user.role === 'string') {
     normalizedRoles.add(normalizeRoleName(user.role));
@@ -68,12 +68,15 @@ export default function PermissionGuard({
       if (name) normalizedRoles.add(normalizeRoleName(name));
     });
   }
-  
+
+  const isSuperAdmin = normalizedRoles.has('superadmin');
+
   const hasRequiredRole =
-    !requiredRole || normalizedRoles.has(normalizeRoleName(requiredRole));
-  
+    isSuperAdmin || !requiredRole || normalizedRoles.has(normalizeRoleName(requiredRole));
+
   // Check if user has all required permissions
   const hasRequiredPermissions =
+    isSuperAdmin ||
     requiredPermissions.length === 0 ||
     (Array.isArray(user.permissions) &&
       requiredPermissions.every((permission) => user.permissions!.includes(permission)));
@@ -82,7 +85,7 @@ export default function PermissionGuard({
   if (!hasRequiredRole || !hasRequiredPermissions) {
     return fallback;
   }
-  
+
   // User has required role and permissions, render children
   return <>{children}</>;
 }

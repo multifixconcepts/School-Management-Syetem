@@ -122,7 +122,17 @@ class CRUDAssignment(TenantCRUDBase[Assignment, AssignmentCreate, AssignmentUpda
         ).filter(Assignment.tenant_id == tenant_id)
         
         for field, value in filters.items():
-            if hasattr(Assignment, field) and value is not None:
+            if field == "period_id" and value:
+                from src.db.models.academics.period import Period
+                period = db.query(Period).filter(Period.id == value).first()
+                if period:
+                    query = query.filter(Assignment.due_date >= period.start_date, Assignment.due_date <= period.end_date)
+            elif field == "semester_id" and value:
+                from src.db.models.academics.semester import Semester
+                semester = db.query(Semester).filter(Semester.id == value).first()
+                if semester:
+                    query = query.filter(Assignment.due_date >= semester.start_date, Assignment.due_date <= semester.end_date)
+            elif hasattr(Assignment, field) and value is not None:
                 query = query.filter(getattr(Assignment, field) == value)
                 
         return query.offset(skip).limit(limit).all()

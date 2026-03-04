@@ -24,6 +24,8 @@ from src.db.crud.academics.academic_year_crud import academic_year_crud
 from src.db.crud.tenant.tenant_settings import tenant_settings as tenant_settings_crud
 from src.db.models.academics.period import Period
 from src.db.models.academics.semester import Semester
+from src.db.models.academics.class_model import Class
+from src.db.models.academics.class_subject import ClassSubject
 
 class GradeCalculationService(TenantBaseService[Grade, GradeCreate, GradeUpdate]):
     """Service for calculating and managing student grades within a tenant."""
@@ -530,7 +532,9 @@ class GradeCalculationService(TenantBaseService[Grade, GradeCreate, GradeUpdate]
         self, 
         student_id: UUID, 
         subject_id: UUID, 
-        academic_year_id: UUID
+        academic_year_id: UUID,
+        period_id: Optional[UUID] = None,
+        semester_id: Optional[UUID] = None
     ) -> Dict[str, Any]:
         """Get a detailed summary of a student's performance in a specific subject."""
         # 1. Fetch Student and Subject
@@ -544,6 +548,7 @@ class GradeCalculationService(TenantBaseService[Grade, GradeCreate, GradeUpdate]
         # 2. Get Enrollment to determine Grade Level and Class (for attendance)
         from src.db.models.academics.enrollment import Enrollment
         from src.db.models.academics.class_model import Class
+        from src.db.models.academics.class_subject import ClassSubject
         
         enrollment = self.db.query(Enrollment).filter(
             Enrollment.tenant_id == self.tenant_id,
@@ -565,14 +570,47 @@ class GradeCalculationService(TenantBaseService[Grade, GradeCreate, GradeUpdate]
             Class.academic_year_id == academic_year_id
         ).first()
 
-        # 3. Load Weighting Logic (Prioritize GradingSchema on Class)
+        # 2. Get the grading schema for this subject within the class
+        cls_subject = None
+        if cls:
+            cls_subject = self.db.query(ClassSubject).filter(
+                ClassSubject.class_id == cls.id,
+                ClassSubject.subject_id == subject_id
+            ).first()
+
+        # 3. Load Weighting Logic (Academic Year Wide Schema)
         use_dynamic_schema = False
         grading_schema = None
-        if cls and cls.grading_schema_id:
-            from src.db.models.academics.grading_schema import GradingSchema
-            grading_schema = self.db.query(GradingSchema).filter(GradingSchema.id == cls.grading_schema_id).first()
-            if grading_schema:
-                use_dynamic_schema = True
+        
+        from src.db.models.academics.grading_schema import GradingSchema
+        
+        # Look for a grading schema explicitly linked to this academic year (Active first)
+        grading_schema = self.db.query(GradingSchema).filter(
+            GradingSchema.tenant_id == self.tenant_id,
+            GradingSchema.academic_year_id == academic_year_id,
+            GradingSchema.is_active == True
+        ).first()
+
+        # Fallback 1: Any schema for this year
+        if not grading_schema:
+            grading_schema = self.db.query(GradingSchema).filter(
+                GradingSchema.tenant_id == self.tenant_id,
+                GradingSchema.academic_year_id == academic_year_id
+            ).first()
+
+        # Fallback 2: ClassSubject specific
+        if not grading_schema and cls_subject and cls_subject.grading_schema_id:
+            grading_schema = cls_subject.grading_schema
+            
+        # Fallback 3: Any active schema for tenant
+        if not grading_schema:
+            grading_schema = self.db.query(GradingSchema).filter(
+                GradingSchema.tenant_id == self.tenant_id,
+                GradingSchema.is_active == True
+            ).first()
+
+        if grading_schema:
+            use_dynamic_schema = True
 
         weighting_schema = {}
         aggregate_method = "average"
@@ -580,27 +618,37 @@ class GradeCalculationService(TenantBaseService[Grade, GradeCreate, GradeUpdate]
         if use_dynamic_schema:
             aggregate_method = "weighted"
             for cat in grading_schema.categories:
-                weighting_schema[cat.id] = cat.weight / 100.0 # Convert to fraction
+                weighting_schema[str(cat.id)] = cat.weight / 100.0 # Convert to fraction
         else:
             criteria_service = PromotionCriteriaService(tenant=self.tenant_id, db=self.db)
             criteria = criteria_service.get_by_year_and_grade(
                 academic_year_id=academic_year_id, grade_id=enrollment.grade_id
             )
-            weighting_schema = (criteria.weighting_schema if criteria else None) or {
+            raw_schema = (criteria.weighting_schema if criteria else None) or {
                 "assignment": 0.2,
                 "quiz": 0.2,
                 "test": 0.2,
                 "exam": 0.4
             }
+            # Ensure keys are consistently lowercase for matching
+            weighting_schema = {str(k).lower(): v for k, v in raw_schema.items()}
             aggregate_method = (criteria.aggregate_method if criteria else "average")
 
         # 4. Fetch all grades
-        grades = self.db.query(Grade).filter(
+        from src.db.models.academics.grade import Grade
+        query = self.db.query(Grade).filter(
             Grade.tenant_id == self.tenant_id,
             Grade.student_id == student_id,
             Grade.subject_id == subject_id,
-            Grade.enrollment_id == enrollment.id
-        ).all()
+            Grade.enrollment_id == enrollment.id if enrollment else None
+        )
+        
+        if period_id:
+            query = query.filter(Grade.period_id == period_id)
+        if semester_id:
+            query = query.filter(Grade.semester_id == semester_id)
+            
+        grades = query.all()
 
         # Group grades by type
         grades_by_type = {}
@@ -609,7 +657,7 @@ class GradeCalculationService(TenantBaseService[Grade, GradeCreate, GradeUpdate]
             if gtype not in grades_by_type:
                 grades_by_type[gtype] = []
             grades_by_type[gtype].append({
-                "id": g.id,
+                "id": str(g.id),
                 "assessment_name": g.assessment_name,
                 "score": g.score,
                 "max_score": g.max_score,
@@ -617,17 +665,10 @@ class GradeCalculationService(TenantBaseService[Grade, GradeCreate, GradeUpdate]
                 "date": g.assessment_date.isoformat() if g.assessment_date else None
             })
 
-        # 5. Calculate Attendance Percentage for THIS SUBJECT
-        attendance_percentage = 100.0 # Default if no class found
+        # 5. Calculate Attendance Percentage
+        attendance_percentage = 100.0
         if cls:
             att_service = AttendanceService(tenant=self.tenant_id, db=self.db)
-            attendance_percentage = await att_service.get_student_attendance_percentage(
-                student_id=student_id,
-                # Filter by class_id to get subject-specific attendance
-                # We need to ensure get_student_attendance_percentage supports class_id
-                # (Actually AttendanceService uses get_attendance_summary which takes class_id)
-            )
-            # Manual call to get more control
             summary = await att_service.get_attendance_summary(
                 student_id=student_id,
                 class_id=cls.id
@@ -644,34 +685,52 @@ class GradeCalculationService(TenantBaseService[Grade, GradeCreate, GradeUpdate]
             
             if use_dynamic_schema:
                 for cat in grading_schema.categories:
-                    # Get all grades for this category
-                    cat_grades = [g for g in grades if str(g.grading_category_id) == str(cat.id)]
+                    cat_name_upper = cat.name.upper()
+                    cat_grades = [
+                        g for g in grades 
+                        if (g.grading_category_id and str(g.grading_category_id) == str(cat.id)) or 
+                        (not g.grading_category_id and str(g.assessment_type).upper() == cat_name_upper)
+                    ]
+                    
                     if cat_grades:
-                        # (Sum score / Sum max) * Weight
                         total_score = sum(g.score for g in cat_grades)
                         total_max = sum(g.max_score for g in cat_grades)
                         if total_max > 0:
-                            cat_weight = weighting_schema[cat.id]
-                            weighted_sum += (total_score / total_max) * cat_weight * 100.0
+                            cat_weight = weighting_schema[str(cat.id)]
+                            cat_score_percent = (total_score / total_max) * 100.0
+                            weighted_sum += cat_score_percent * cat_weight
                             total_weight += cat_weight
-                            details.append({"type": cat.name, "weight": cat_weight * 100.0, "score": (total_score / total_max) * 100.0})
+                            details.append({
+                                "type": cat.name, 
+                                "weight": cat_weight * 100.0, 
+                                "score": cat_score_percent,
+                                "count": len(cat_grades)
+                            })
             else:
                 for gtype, weight in weighting_schema.items():
                     weight = float(weight)
-                    if gtype == "attendance":
+                    gtype_lower = gtype.lower()
+                    
+                    if gtype_lower == "attendance":
                         weighted_sum += attendance_percentage * weight
                         total_weight += weight
                         details.append({"type": "attendance", "weight": weight, "score": attendance_percentage})
-                    elif gtype in grades_by_type:
-                        type_avg = sum(g["percentage"] for g in grades_by_type[gtype]) / len(grades_by_type[gtype])
-                        weighted_sum += type_avg * weight
-                        total_weight += weight
-                        details.append({"type": gtype, "weight": weight, "score": type_avg})
+                    else:
+                        found_type = None
+                        for actual_type in grades_by_type.keys():
+                            if actual_type.lower() == gtype_lower:
+                                found_type = actual_type
+                                break
+                                
+                        if found_type:
+                            type_avg = sum(g["percentage"] for g in grades_by_type[found_type]) / len(grades_by_type[found_type])
+                            weighted_sum += type_avg * weight
+                            total_weight += weight
+                            details.append({"type": gtype, "weight": weight, "score": type_avg})
             
             if total_weight > 0:
                 final_percentage = weighted_sum / total_weight
             else:
-                # Fallback to simple average
                 all_percentages = [g["percentage"] for types in grades_by_type.values() for g in types]
                 final_percentage = sum(all_percentages) / len(all_percentages) if all_percentages else 0.0
         else:
@@ -679,10 +738,10 @@ class GradeCalculationService(TenantBaseService[Grade, GradeCreate, GradeUpdate]
             final_percentage = sum(all_percentages) / len(all_percentages) if all_percentages else 0.0
 
         return {
-            "student_id": student_id,
-            "subject_id": subject_id,
+            "student_id": str(student_id),
+            "subject_id": str(subject_id),
             "subject_name": subject.name,
-            "academic_year_id": academic_year_id,
+            "academic_year_id": str(academic_year_id),
             "cumulative_percentage": round(final_percentage, 2),
             "letter_grade": self._calculate_letter_grade(final_percentage),
             "attendance_percentage": round(attendance_percentage, 2),
@@ -690,6 +749,30 @@ class GradeCalculationService(TenantBaseService[Grade, GradeCreate, GradeUpdate]
             "calculation_details": details,
             "weighting_schema": weighting_schema
         }
+
+    async def get_student_academic_history(self, student_id: UUID) -> List[Dict[str, Any]]:
+        """Get multi-year academic history for a student."""
+        from src.db.models.academics.enrollment import Enrollment
+        from src.db.models.academics.academic_year import AcademicYear
+        
+        enrollments = self.db.query(Enrollment).filter(
+            Enrollment.student_id == student_id,
+            Enrollment.tenant_id == self.tenant_id
+        ).join(AcademicYear).order_by(AcademicYear.start_date.desc()).all()
+        
+        history = []
+        for enrollment in enrollments:
+            ay = enrollment.academic_year
+            history.append({
+                "academic_year_id": str(ay.id),
+                "academic_year_name": ay.name,
+                "grade_level": enrollment.grade.name if enrollment.grade else "Unknown",
+                "enrollment_id": str(enrollment.id),
+                "is_active": enrollment.is_active,
+                "status": "COMPLETED" if not enrollment.is_active else "IN_PROGRESS"
+            })
+            
+        return history
 
     def _calculate_letter_grade(self, percentage: float) -> str:
         """Calculate letter grade based on percentage."""

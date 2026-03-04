@@ -11,6 +11,7 @@ import {
   Enrollment,
   AcademicYear,
   Grade,
+  Section,
   EnrollmentCreate,
   EnrollmentUpdate
 } from '@/types/enrollment';
@@ -20,7 +21,6 @@ import { useClassService } from '@/services/api/class-service';
 import { useCreateEnrollment, useUpdateEnrollment } from '@/hooks/queries/enrollments';
 import { useCreateStudent } from '@/hooks/queries/students';
 import { useSectionsByGrade } from '@/hooks/queries/sections';
-import type { Section as SectionModel } from '@/types/section';
 import { toast } from 'sonner';
 import { AppError, ErrorType } from '@/utils/error-utils';
 
@@ -29,7 +29,7 @@ interface EnrollmentFormProps {
   students: Student[];
   academicYears: AcademicYear[];
   grades: Grade[];
-  sections: SectionModel[]; // kept for compatibility; not used directly
+  sections: Section[]; // aligned with EnrollmentDialogs
   currentAcademicYear: AcademicYear | null;
   onSuccess: () => void;
 }
@@ -170,20 +170,8 @@ export default function EnrollmentForm({
       const gradeMatch = grades.find(g => g.name === autoGradeName);
       const gradeId = gradeMatch?.id ?? '';
 
-      // If we can resolve gradeId, fetch sections and resolve sectionId
-      // Note: useSectionsByGrade handles fetching, but we need to resolve ID based on name.
-      // Since sections might not be loaded yet if we just set the gradeId, we might need a manual lookup or wait.
-      // However, for auto-enrollment display, we set the names directly.
-      // For proper ID resolution, we rely on the user interface or subsequent updates.
-      // Given the complexity of async state sync, we will set what we know.
-      // Ideally, we shouldn't rely on 'filteredSections' immediately here for auto-fill if it's async.
-      // But let's try to find it in the potentially loaded data or just clear it effectively if not found.
-
       let sectionId = '';
       if (gradeId) {
-        // We can't easily wait for the hook to re-fetch in this effect loop. 
-        // Use best effort matching if sections are already filtered for this grade, 
-        // or just rely on the user to re-select if needed (though auto-enrollment implies read-only mostly).
         const sectionMatch = filteredSections.find(s => s.name === autoSectionName);
         sectionId = sectionMatch?.id ?? '';
       }
@@ -258,6 +246,7 @@ export default function EnrollmentForm({
               admission_number: newStudent.admission_number || undefined
             });
             studentId = created.id;
+            toast.success(`Student ${created.firstName} ${created.lastName} created`);
           } catch (err: any) {
             const raw = String(
               err?.message ||
@@ -265,15 +254,9 @@ export default function EnrollmentForm({
               err?.error ||
               ''
             );
-
-            const isDuplicateEmail =
-              /UniqueViolation|duplicate key|already exists|users_email_key/i.test(raw);
-
-            const friendlyMessage = isDuplicateEmail
-              ? 'That email is already in use. Please use the existing student or change the email.'
-              : 'Could not create student. Please try again.';
-
-            toast.error(friendlyMessage);
+            const errorMessage = err?.message || 'Could not create student. Please try again.';
+            toast.error(errorMessage);
+            setCreatingNewStudent(false); // Assuming setIsCreatingStudent was a typo for setCreatingNewStudent
             return;
           }
 
@@ -282,9 +265,13 @@ export default function EnrollmentForm({
           if (auto) {
             setAutoEnrollmentDetected(auto);
             toast.info('Student auto-enrolled', {
-              description: `Enrolled in ${typeof auto.grade === 'string' ? auto.grade : auto.grade?.name} / ${typeof auto.section === 'string' ? auto.section : auto.section?.name} (${typeof auto.academic_year === 'string' ? auto.academic_year : auto.academic_year?.name}).`,
+              description: `Successfully enrolled in ${typeof auto.grade === 'string' ? auto.grade : auto.grade?.name} / ${typeof auto.section === 'string' ? auto.section : auto.section?.name} for ${typeof auto.academic_year === 'string' ? auto.academic_year : auto.academic_year?.name}.`,
             });
-            onSuccess(); // refresh lists
+
+            // Short delay to allow toasts to be perceived before dialog closes
+            setTimeout(() => {
+              onSuccess(); // refresh lists
+            }, 500);
             return; // prevent duplicate enrollments
           }
         }

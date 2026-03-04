@@ -18,6 +18,7 @@ class CRUDGradingSchema(TenantCRUDBase[GradingSchema, GradingSchemaCreate, Gradi
             name=obj_in.name,
             description=obj_in.description,
             is_active=obj_in.is_active,
+            academic_year_id=obj_in.academic_year_id,
             tenant_id=tenant_id
         )
         db.add(db_obj)

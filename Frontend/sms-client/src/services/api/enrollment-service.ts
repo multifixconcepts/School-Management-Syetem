@@ -75,10 +75,16 @@ export function useEnrollmentService() {
       return client.delete<void>(`/academics/enrollments/${id}`);
     },
     // Bulk operations
-    bulkCreateEnrollments: async (bulkEnrollment: BulkEnrollmentCreate): Promise<Enrollment[]> => {
+    bulkCreateEnrollments: async (bulkEnrollment: BulkEnrollmentCreate): Promise<any> => {
       const client: ApiClient = await waitForApiClientReady();
-      const resp = await client.post<any[]>('/academics/enrollments/bulk', bulkEnrollment);
-      return resp.map(mapEnrollment);
+      const resp = await client.post<any>('/academics/enrollments/bulk', bulkEnrollment);
+      if (Array.isArray(resp)) {
+        return resp.map(mapEnrollment);
+      }
+      return {
+        ...resp,
+        created: Array.isArray(resp.created) ? resp.created.map(mapEnrollment) : []
+      };
     },
     // Student-specific enrollments
     getStudentEnrollments: async (studentId: string): Promise<Enrollment[]> => {
@@ -131,7 +137,8 @@ export function useEnrollmentService() {
     // Academic data
     getAcademicYears: async (): Promise<AcademicYear[]> => {
       const client: ApiClient = await waitForApiClientReady();
-      return client.get<AcademicYear[]>('/academics/academic-years');
+      const resp = await client.get<AcademicYear[]>('/academics/academic-years');
+      return Array.isArray(resp) ? resp : [];
     },
     getCurrentAcademicYear: async (): Promise<AcademicYear | null> => {
       const client: ApiClient = await waitForApiClientReady();
@@ -139,11 +146,13 @@ export function useEnrollmentService() {
     },
     getGrades: async (): Promise<Grade[]> => {
       const client: ApiClient = await waitForApiClientReady();
-      return client.get<Grade[]>('/academics/academic-grades');
+      const resp = await client.get<Grade[]>('/academics/academic-grades');
+      return Array.isArray(resp) ? resp : [];
     },
     getSections: async (): Promise<Section[]> => {
       const client: ApiClient = await waitForApiClientReady();
-      return client.get<Section[]>('/academics/sections');
+      const resp = await client.get<Section[]>('/academics/sections');
+      return Array.isArray(resp) ? resp : [];
     },
 
     // Consolidated (single) bulk current enrollments implementation
@@ -257,12 +266,19 @@ export function useEnrollmentService() {
       id: string,
       status: 'active' | 'inactive' | 'transferred' | 'graduated' | 'withdrawn',
       withdrawal_date?: string,
-      withdrawal_reason?: string
+      withdrawal_reason?: string,
+      transfer_school?: string
     ): Promise<Enrollment> => {
       const client: ApiClient = await waitForApiClientReady();
-      const payload: { status: 'active' | 'inactive' | 'transferred' | 'graduated' | 'withdrawn'; withdrawal_date?: string; withdrawal_reason?: string } = { status };
+      const payload: {
+        status: 'active' | 'inactive' | 'transferred' | 'graduated' | 'withdrawn';
+        withdrawal_date?: string;
+        withdrawal_reason?: string;
+        transfer_school?: string;
+      } = { status };
       if (withdrawal_date) payload.withdrawal_date = withdrawal_date;
       if (withdrawal_reason) payload.withdrawal_reason = withdrawal_reason;
+      if (transfer_school) payload.transfer_school = transfer_school;
       const resp = await client.put<any>(`/academics/enrollments/${id}/status`, payload);
       return mapEnrollment(resp);
     },

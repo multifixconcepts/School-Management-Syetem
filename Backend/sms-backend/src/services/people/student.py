@@ -112,7 +112,24 @@ class StudentService(TenantBaseService[Student, StudentCreate, StudentUpdate]):
         if status not in valid_transitions.get(student.status, []):
             raise InvalidStatusTransitionError("Student", student.status, status)
         
-        return student_crud.update_status(self.db, tenant_id=self.tenant_id, id=id, status=status, reason=reason)
+        updated_student = student_crud.update_status(self.db, tenant_id=self.tenant_id, id=id, status=status, reason=reason)
+
+        # Secondary effect: if student is archived (inactive), mark active enrollments as inactive
+        if status == "inactive":
+            from src.services.academics.enrollment import EnrollmentService
+            enrollment_service = EnrollmentService(tenant=self.tenant_id, db=self.db)
+            active_enrollments = await enrollment_service.get_multi(student_id=id, is_active=True)
+            for enrollment in active_enrollments:
+                await enrollment_service.update(id=enrollment.id, obj_in={"is_active": False})
+            
+            # Also inactivate Class Enrollments
+            from src.services.academics.class_enrollment_service import ClassEnrollmentService
+            ce_service = ClassEnrollmentService(tenant=self.tenant_id, db=self.db)
+            active_ces = await ce_service.get_multi(student_id=id, is_active=True)
+            for ce in active_ces:
+                await ce_service.update(id=ce.id, obj_in=ClassEnrollmentUpdate(is_active=False))
+        
+        return updated_student
 
     async def bulk_delete(self, student_ids: List[UUID]) -> int:
         """Delete multiple students. Returns the number of students deleted."""

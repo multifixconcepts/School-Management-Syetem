@@ -105,14 +105,15 @@ export async function GET(request: NextRequest) {
         signal,
       }
     );
-    cancel();
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: 'Failed to fetch students' }));
+      cancel();
       return NextResponse.json(errorData, { status: response.status });
     }
 
     const data = await response.json();
+    cancel();
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error in students API route:', error);
@@ -196,14 +197,15 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(requestBody),
       signal,
     });
-    cancel();
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: 'Failed to create student' }));
+      cancel();
       return NextResponse.json(errorData, { status: response.status });
     }
 
     const data = await response.json();
+    cancel();
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error creating student:', error);

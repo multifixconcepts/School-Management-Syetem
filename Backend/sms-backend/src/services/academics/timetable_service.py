@@ -97,14 +97,43 @@ class TimetableService(TenantBaseService[Timetable, TimetableCreate, TimetableUp
     
     async def list(self, *, skip: int = 0, limit: int = 100, filters: Dict[str, Any] = {}) -> List[Timetable]:
         converted = dict(filters or {})
+        teacher_id = converted.pop("teacher_id", None)
         ay_name = converted.get("academic_year")
+        
         if ay_name:
             ay = academic_year_crud.get_by_name(self.db, tenant_id=self.tenant_id, name=ay_name)
             if ay:
                 converted["academic_year_id"] = ay.id
             converted.pop("academic_year", None)
         
-        timetables = await super().list(skip=skip, limit=limit, filters=converted)
+        query = self.db.query(Timetable).filter(Timetable.tenant_id == self.tenant_id)
+        
+        # Apply teacher filter if provided
+        if teacher_id:
+            from src.db.models.academics.class_subject import ClassSubject
+            from src.db.models.academics.class_model import Class
+            
+            # Subquery to find Class IDs where the teacher has at least one subject
+            # We match Timetable to Class by Grade, Section, and Academic Year
+            query = query.join(
+                Class,
+                (Class.grade_id == Timetable.grade_id) & 
+                (Class.section_id == Timetable.section_id) & 
+                (Class.academic_year_id == Timetable.academic_year_id)
+            ).join(
+                ClassSubject,
+                Class.id == ClassSubject.class_id
+            ).filter(
+                ClassSubject.teacher_id == teacher_id
+            )
+        
+        # Apply other filters
+        for field, value in converted.items():
+            if hasattr(Timetable, field) and value is not None:
+                query = query.filter(getattr(Timetable, field) == value)
+                
+        timetables = query.offset(skip).limit(limit).all()
+        
         # Enrich each timetable with subject and teacher names
         return [self._enrich_timetable_slots(t) for t in timetables]
     

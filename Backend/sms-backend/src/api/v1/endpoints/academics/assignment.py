@@ -35,6 +35,8 @@ async def get_assignments(
     grade_id: Optional[UUID] = None,
     section_id: Optional[UUID] = None,
     academic_year_id: Optional[UUID] = None,
+    period_id: Optional[UUID] = Query(None, description="Optional filter by period"),
+    semester_id: Optional[UUID] = Query(None, description="Optional filter by semester"),
     is_published: Optional[bool] = None
 ) -> Any:
     filters = {}
@@ -48,6 +50,10 @@ async def get_assignments(
         filters["section_id"] = section_id
     if academic_year_id:
         filters["academic_year_id"] = academic_year_id
+    if period_id:
+        filters["period_id"] = period_id
+    if semester_id:
+        filters["semester_id"] = semester_id
     if is_published is not None:
         filters["is_published"] = is_published
     return assignment_service.list(skip=skip, limit=limit, filters=filters)

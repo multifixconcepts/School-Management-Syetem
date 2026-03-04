@@ -132,9 +132,9 @@ function getNavigation(rawRole: string, tenantDomain?: string): MenuItem[] {
         name: 'Infrastructure',
         icon: Shield,
         children: [
-          { name: 'Roles', href: tenantDomain ? `/${tenantDomain}/admin/roles` : '/admin/roles', icon: Shield },
+          { name: 'Roles', href: tenantDomain ? `/${tenantDomain}/admin/roles` : '/admin/roles', icon: Shield, requiredPermissions: ['manage_roles'] },
           { name: 'Permissions', href: tenantDomain ? `/${tenantDomain}/admin/permissions` : '/admin/permissions', icon: Shield, requiredPermissions: ['manage_permissions'] },
-          { name: 'Role Assignment', href: tenantDomain ? `/${tenantDomain}/admin/role-assignment` : '/admin/role-assignment', icon: UserCheck },
+          { name: 'Role Assignment', href: tenantDomain ? `/${tenantDomain}/admin/role-assignment` : '/admin/role-assignment', icon: UserCheck, requiredPermissions: ['manage_users'] },
           { name: 'Activity Logs', href: tenantDomain ? `/${tenantDomain}/admin/activity-logs` : '/admin/activity-logs', icon: ClipboardList },
           { name: 'General Settings', href: tenantDomain ? `/${tenantDomain}/settings` : '/settings', icon: Settings },
         ]
@@ -155,6 +155,7 @@ function getNavigation(rawRole: string, tenantDomain?: string): MenuItem[] {
         children: [
           { name: 'My Classes', href: tenantDomain ? `/${tenantDomain}/teacher/classes` : '/teacher/classes', icon: BookOpen },
           { name: 'Attendance', href: tenantDomain ? `/${tenantDomain}/teacher/attendance` : '/teacher/attendance', icon: ClipboardList },
+          { name: 'Timetable', href: tenantDomain ? `/${tenantDomain}/academics/timetables` : '/academics/timetables', icon: Calendar },
         ]
       },
 
@@ -215,6 +216,11 @@ export default function Sidebar() {
 
   // Helper function to check if user has required permissions
   const hasPermissions = (requiredPermissions?: string[]): boolean => {
+    // Development mode bypass for easier local testing
+    if (process.env.NEXT_PUBLIC_APP_ENV === 'development') {
+      return true;
+    }
+
     if (!requiredPermissions || requiredPermissions.length === 0) {
       return true; // No permissions required
     }

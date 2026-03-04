@@ -47,27 +47,50 @@ class CRUDStudent(TenantCRUDBase[Student, StudentCreate, StudentUpdate]):
         return student
     
     def generate_admission_number(self, db: Session, tenant_id: Any, prefix: str = "STU", digits: int = 4) -> str:
-        """Generate a unique admission number for a student within a tenant."""
-        # Get the highest existing admission number with the same prefix
-        latest_student = db.query(Student).filter(
-            Student.tenant_id == tenant_id,
-            Student.admission_number.like(f"{prefix}%")
-        ).order_by(Student.admission_number.desc()).first()
+        """
+        Generate a unique admission number for a student within a tenant.
+        Uses a dedicated sequence table to ensure gaps (from deletions) are not reused.
+        """
+        from src.db.models.people.student_id_sequence import StudentIdSequence
         
-        if latest_student and latest_student.admission_number:
-            try:
-                # Extract number from latest ID (e.g., STU0001 -> 1)
-                number_part = latest_student.admission_number[len(prefix):]
-                if number_part.isdigit():
-                    next_num = int(number_part) + 1
-                else:
-                    next_num = 1
-            except (ValueError, IndexError):
-                next_num = 1
-        else:
-            next_num = 1
+        # Lock the sequence row for update to prevent race conditions
+        sequence = db.query(StudentIdSequence).filter(
+            StudentIdSequence.tenant_id == tenant_id,
+            StudentIdSequence.prefix == prefix
+        ).with_for_update().first()
         
-        # Format with specified digits (e.g., STU0001, STU0002, etc.)
+        if not sequence:
+            # First time initialization: check if manual records exist to set baseline
+            latest_student = db.query(Student).filter(
+                Student.tenant_id == tenant_id,
+                Student.admission_number.like(f"{prefix}%")
+            ).order_by(Student.admission_number.desc()).first()
+            
+            start_number = 0
+            if latest_student and latest_student.admission_number:
+                try:
+                    number_part = latest_student.admission_number[len(prefix):]
+                    if number_part.isdigit():
+                        start_number = int(number_part)
+                except (ValueError, IndexError):
+                    pass
+            
+            sequence = StudentIdSequence(
+                tenant_id=tenant_id,
+                prefix=prefix,
+                last_number=start_number
+            )
+            db.add(sequence)
+            db.flush() # Ensure it exists for subsequent ops
+            
+        # Increment sequence
+        sequence.last_number += 1
+        db.add(sequence)
+        db.commit()
+        db.refresh(sequence)
+        
+        next_num = sequence.last_number
+        
         return f"{prefix}{str(next_num).zfill(digits)}"
     
     def create(self, db: Session, *, tenant_id: Any, obj_in: Union[StudentCreate, Dict[str, Any]]) -> Student:
@@ -140,6 +163,8 @@ class CRUDStudent(TenantCRUDBase[Student, StudentCreate, StudentUpdate]):
                 user_fields[field] = value
             elif field in student_columns and field != 'id':  # Don't update ID
                 student_fields[field] = value
+            elif field == 'address':  # Handle the address mapping explicitly
+                student_fields['student_address'] = value
         
         # Update User table fields if any
         if user_fields:

@@ -542,6 +542,7 @@ export default function AssessmentsPage() {
                     academicYearId={academicYearId}
                     maxScore={selectedAssessmentForMarks.max_score}
                     assessmentType={selectedAssessmentForMarks.type as any}
+                    assessmentDate={selectedAssessmentForMarks.assessment_date}
                 />
             )}
         </div>

@@ -58,8 +58,8 @@ async def get_enrollments(
         if not include_archived:
             filters["is_active"] = True
 
-        enrollments = await enrollment_service.get_multi(skip=skip, limit=limit, **filters)
-        total_count = await enrollment_service.count(**filters)
+        enrollments = await enrollment_service.get_multi(skip=skip, limit=limit, search=search, **filters)
+        total_count = await enrollment_service.count(search=search, **filters)
 
         return {
             "items": enrollments,
@@ -227,7 +227,7 @@ async def delete_enrollment(
         )
 
 # bulk_create_enrollments
-@router.post("/enrollments/bulk", response_model=List[Enrollment], status_code=status.HTTP_201_CREATED)
+@router.post("/enrollments/bulk", response_model=Any, status_code=status.HTTP_201_CREATED)
 async def bulk_create_enrollments(
     *,
     enrollment_service: EnrollmentService = Depends(),
@@ -306,7 +306,14 @@ async def bulk_create_enrollments(
                 enrollment = await enrollment_service.create(obj_in=EnrollmentCreate(**enrollment_kwargs))
                 created_enrollments.append(enrollment)
             except Exception as e:
-                failed_enrollments.append({"student_id": student_id, "error": str(e)})
+                # Catch business exceptions and return their messages specifically
+                error_msg = str(e)
+                if hasattr(e, 'detail'):
+                    error_msg = e.detail
+                elif hasattr(e, 'message'):
+                    error_msg = e.message
+                
+                failed_enrollments.append({"student_id": student_id, "error": error_msg})
 
         return {
             "status": "success" if not failed_enrollments else "partial",
@@ -362,6 +369,7 @@ async def update_enrollment_status(
         new_status = status_data.get("status")
         withdrawal_date = status_data.get("withdrawal_date")
         withdrawal_reason = status_data.get("withdrawal_reason")
+        transfer_school = status_data.get("transfer_school")
         
         if not new_status:
             raise HTTPException(
@@ -373,7 +381,8 @@ async def update_enrollment_status(
             id=enrollment_id,
             status=new_status,
             withdrawal_date=withdrawal_date,
-            withdrawal_reason=withdrawal_reason
+            withdrawal_reason=withdrawal_reason,
+            transfer_school=transfer_school
         )
         
         return updated_enrollment

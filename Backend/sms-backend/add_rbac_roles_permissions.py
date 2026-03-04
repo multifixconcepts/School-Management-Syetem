@@ -30,7 +30,8 @@ admin_permissions = [
     {"name": "manage_users", "description": "Permission to manage users"},
     {"name": "view_tenant_data", "description": "Permission to view tenant data"},
     {"name": "manage_tenant_settings", "description": "Permission to manage tenant settings"},
-    {"name": "manage_permissions", "description": "Permission to manage tenant permissions"}
+    {"name": "manage_permissions", "description": "Permission to manage tenant permissions"},
+    {"name": "manage_roles", "description": "Permission to manage tenant roles"}
 ]
 
 # Define role templates

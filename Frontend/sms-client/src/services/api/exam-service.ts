@@ -51,13 +51,15 @@ export interface ExamFilters {
   grade_id?: string;
   section_id?: string;
   academic_year_id?: string;
+  period_id?: string;
+  semester_id?: string;
   is_published?: boolean;
   search?: string;
 }
 
 export function useExamService() {
   const { apiClient, isLoading: apiLoading } = useApiClientWithLoading();
-  const waitForApiClientReady = createWaitForApiClientReady(apiClient);
+  const waitForApiClientReady = useMemo(() => createWaitForApiClientReady(apiClient), [apiClient]);
 
   const service = useMemo(() => ({
     getExams: async (filters?: ExamFilters): Promise<Exam[]> => {
@@ -71,6 +73,8 @@ export function useExamService() {
       if (filters?.section_id) qs.append('section_id', filters.section_id);
       if (filters?.is_published !== undefined) qs.append('is_published', String(filters.is_published));
       if (filters?.academic_year_id) qs.append('academic_year_id', filters.academic_year_id);
+      if (filters?.period_id) qs.append('period_id', filters.period_id);
+      if (filters?.semester_id) qs.append('semester_id', filters.semester_id);
       if (filters?.search) qs.append('search', filters.search);
       const url = `/academics/exams${qs.toString() ? `?${qs.toString()}` : ''}`;
       return client.get<Exam[]>(url);

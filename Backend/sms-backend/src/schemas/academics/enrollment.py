@@ -46,6 +46,7 @@ class EnrollmentUpdate(BaseModel):
     withdrawal_date: Optional[date] = None
     withdrawal_reason: Optional[str] = None
     comments: Optional[str] = None
+    transfer_school: Optional[str] = None
 
 class EnrollmentInDB(EnrollmentBase):
     """Schema for Enrollment model in database."""

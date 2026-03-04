@@ -12,6 +12,8 @@ import { useGradingSchemas, useCreateGradingSchema, useUpdateGradingSchema, useD
 import { Loader2 } from 'lucide-react';
 import type { GradingSchemaCreate } from '@/services/api/grading-service';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
+import { useAcademicYear } from '@/contexts/academic-year-context';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export function GradingSchemaManager() {
     const { data: schemas, isLoading } = useGradingSchemas();
@@ -19,11 +21,14 @@ export function GradingSchemaManager() {
     const updateSchemaMutation = useUpdateGradingSchema();
     const deleteSchemaMutation = useDeleteGradingSchema();
 
+    const { academicYears: ayList } = useAcademicYear();
+
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingSchema, setEditingSchema] = useState<any | null>(null);
     const [formData, setFormData] = useState<GradingSchemaCreate>({
         name: '',
         description: '',
+        academic_year_id: '',
         categories: [{ name: '', weight: 0 }]
     });
 
@@ -69,6 +74,11 @@ export function GradingSchemaManager() {
             return;
         }
 
+        if (!formData.academic_year_id) {
+            toast.error('Academic year selection is required');
+            return;
+        }
+
         try {
             if (editingSchema) {
                 await updateSchemaMutation.mutateAsync({ id: editingSchema.id, data: formData });
@@ -89,6 +99,7 @@ export function GradingSchemaManager() {
         setFormData({
             name: '',
             description: '',
+            academic_year_id: '',
             categories: [{ name: '', weight: 0 }]
         });
     };
@@ -98,6 +109,7 @@ export function GradingSchemaManager() {
         setFormData({
             name: schema.name,
             description: schema.description || '',
+            academic_year_id: schema.academic_year_id || '',
             categories: schema.categories.map((c: any) => ({ name: c.name, weight: c.weight, description: c.description }))
         });
         setIsDialogOpen(true);
@@ -155,6 +167,22 @@ export function GradingSchemaManager() {
                                         value={formData.name}
                                         onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                                     />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="academic_year">Academic Year</Label>
+                                    <Select
+                                        value={formData.academic_year_id}
+                                        onValueChange={(val) => setFormData(prev => ({ ...prev, academic_year_id: val }))}
+                                    >
+                                        <SelectTrigger id="academic_year">
+                                            <SelectValue placeholder="Select Academic Year" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {ayList.map((ay) => (
+                                                <SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="description">Description</Label>

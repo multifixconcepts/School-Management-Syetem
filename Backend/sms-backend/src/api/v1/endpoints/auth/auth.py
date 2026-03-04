@@ -27,6 +27,7 @@ from src.services.auth.password_strength import calculate_password_strength
 from src.services.auth.password import generate_default_password
 from src.services.logging import AuditLoggingService
 from src.services.auth.token_blacklist import TokenBlacklistService
+from src.core.redis import cache, REDIS_AVAILABLE
 
 # Define the oauth2_scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -255,38 +256,41 @@ def get_roles(
     return roles
 
 
-# Simple in-memory rate limiter (replace with Redis in production)
-login_attempts = {}
-
-def rate_limit_login(request: Request):
-    ip = request.client.host
-    current_time = datetime.now(timezone.utc)
-    
-    # Clean up old entries
-    for key in list(login_attempts.keys()):
-        if login_attempts[key]["reset_time"] < current_time:
-            del login_attempts[key]
-    
-    # Check if IP is in the dictionary
-    if ip not in login_attempts:
-        login_attempts[ip] = {
-            "count": 1,
-            "reset_time": current_time + timedelta(minutes=15)
-        }
+# Redis-based rate limiter
+async def rate_limit_login(request: Request):
+    if not REDIS_AVAILABLE:
         return
+
+    # Ensure connection
+    if not cache.client:
+        await cache.connect()
+    
+    if not cache.client:
+        return
+
+    ip = request.client.host
+    key = f"login_attempts:{ip}"
     
     # Increment count
-    login_attempts[ip]["count"] += 1
-    
-    # Check if limit exceeded
-    if login_attempts[ip]["count"] > 5:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many login attempts. Please try again later."
-        )
+    try:
+        # Use a pipeline to ensure atomic operations
+        async with cache.client.pipeline() as pipe:
+            await pipe.incr(key)
+            await pipe.expire(key, 900) # 15 minutes window
+            result = await pipe.execute()
+            count = result[0]
+            
+        if count > 5:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many login attempts. Please try again later."
+            )
+    except Exception as e:
+        # Fail open if Redis errors, but log it
+        print(f"Rate limiting error: {e}")
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=Token, dependencies=[Depends(rate_limit_login)])
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
@@ -344,11 +348,23 @@ async def login_for_access_token(
 
 @router.post("/refresh", response_model=Token)
 async def refresh_access_token(
-    refresh_token: str = Body(..., embed=True),
+    request: Request,
+    refresh_token: Optional[str] = Body(None, embed=True),
     db: Session = Depends(get_db)
 ) -> Any:
     """Refresh access token using refresh token."""
     try:
+        # Extract token from Body OR Authorization header
+        if not refresh_token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                refresh_token = auth_header.split(" ")[1]
+        
+        if not refresh_token:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Refresh token required in body or Authorization header"
+            )
         # Verify refresh token
         token_data = await verify_token(refresh_token)
         if not token_data:

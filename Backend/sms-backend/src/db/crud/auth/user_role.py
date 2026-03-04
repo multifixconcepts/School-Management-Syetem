@@ -32,6 +32,23 @@ class CRUDUserRole(CRUDBase[UserRole, UserRoleCreate, UserRoleUpdate]):
         db.refresh(role)
         return role
 
+    def set_permissions_to_role(self, db: Session, role_id: Any, permission_ids: List[Any]) -> UserRole:
+        """Replace all permissions for a role with the provided ones."""
+        role = self.get(db, role_id)
+        if not role:
+            return None
+            
+        # Get the permission objects
+        permissions = db.query(Permission).filter(Permission.id.in_(permission_ids)).all()
+        
+        # Replace the collection
+        role.permissions = permissions
+        
+        db.add(role)
+        db.commit()
+        db.refresh(role)
+        return role
+
 
 user_role = CRUDUserRole(UserRole)
 

@@ -708,6 +708,7 @@ export default function ExamsPage() {
           subjectId={selectedExamForMarks.subject_id}
           academicYearId={academicYearId}
           maxScore={selectedExamForMarks.max_score ?? 100}
+          assessmentDate={selectedExamForMarks.exam_date}
         />
       )}
     </div>

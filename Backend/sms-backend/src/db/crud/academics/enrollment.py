@@ -94,11 +94,24 @@ class CRUDEnrollment(TenantCRUDBase[Enrollment, EnrollmentCreate, EnrollmentUpda
         db.commit()
         return enrollment
     
-    def count(self, db: Session, tenant_id: Any, **filters) -> int:
-        """Count enrollments with optional filters."""
+    def count(self, db: Session, tenant_id: Any, search: Optional[str] = None, **filters) -> int:
+        """Count enrollments with optional filters and search."""
         tenant_id = self._ensure_uuid(tenant_id)
         query = db.query(self.model).filter(self.model.tenant_id == tenant_id)
         
+        # Apply search if provided
+        if search:
+            search_filter = f"%{search}%"
+            query = query.join(Student, self.model.student_id == Student.id).filter(
+                or_(
+                    Student.first_name.ilike(search_filter),
+                    Student.last_name.ilike(search_filter),
+                    # full name search
+                    func.concat(Student.first_name, ' ', Student.last_name).ilike(search_filter),
+                    Student.admission_number.ilike(search_filter)
+                )
+            )
+
         # Apply filters
         for field, value in filters.items():
             if hasattr(self.model, field) and value is not None:
@@ -114,9 +127,10 @@ class CRUDEnrollment(TenantCRUDBase[Enrollment, EnrollmentCreate, EnrollmentUpda
         skip: int = 0, 
         limit: int = 100, 
         options: Optional[List[Any]] = None,
+        search: Optional[str] = None,
         **filters
     ) -> List[Enrollment]:
-        """Get multiple enrollments with pagination, filters, and student data."""
+        """Get multiple enrollments with pagination, filters, and search support."""
         from sqlalchemy.orm import joinedload
         
         tenant_id = self._ensure_uuid(tenant_id)
@@ -139,6 +153,20 @@ class CRUDEnrollment(TenantCRUDBase[Enrollment, EnrollmentCreate, EnrollmentUpda
             )
         
         query = query.filter(Enrollment.tenant_id == tenant_id)
+
+        # Apply search if provided
+        if search:
+            search_filter = f"%{search}%"
+            # Ensure we only join Student once
+            query = query.join(Student, Enrollment.student_id == Student.id).filter(
+                or_(
+                    Student.first_name.ilike(search_filter),
+                    Student.last_name.ilike(search_filter),
+                    # Use concatenation for full name search
+                    func.concat(Student.first_name, ' ', Student.last_name).ilike(search_filter),
+                    Student.admission_number.ilike(search_filter)
+                )
+            )
         
         # Apply filters
         for field, value in filters.items():

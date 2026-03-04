@@ -8,38 +8,29 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 import UserEditModal from '@/components/common/UserEditModal';
 import { PasswordResetDialog } from '@/components/common/PasswordResetDialog';
-import { Edit, UserCheck, UserX, Plus, RefreshCw, KeyRound } from 'lucide-react';
-import { UserUpdate } from '@/services/api/super-admin-service';
+import { Edit, UserCheck, UserX, Plus, RefreshCw, KeyRound, UserPlus } from 'lucide-react';
+import { UserUpdate, UserCreateCrossTenant } from '@/services/api/super-admin-service';
+import UserCreateModal from '@/components/common/UserCreateModal';
+import { toast } from 'sonner';
+
+import {
+  useSuperAdminUserList,
+  useSuperAdminCreateUser,
+  useSuperAdminUpdateUser
+} from '@/hooks/queries/super-admin';
 
 export default function UserManagementPage() {
-  const [users, setUsers] = useState<UserWithRoles[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalAction, setModalAction] = useState<'activate' | 'deactivate' | 'edit' | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [resettingUser, setResettingUser] = useState<UserWithRoles | null>(null);
-  const [isModalLoading, setIsModalLoading] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  const superAdminService = useSuperAdminService();
+  // TanStack Query Hooks
+  const { data: users = [], isLoading, refetch } = useSuperAdminUserList();
+  const createUser = useSuperAdminCreateUser();
+  const updateUser = useSuperAdminUpdateUser();
 
-  const fetchUsers = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const userList = await superAdminService.getUserList();
-      setUsers(userList);
-    } catch (err) {
-      console.error('Failed to fetch users from API:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load users');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [superAdminService]);
-
-  useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+  const isModalLoading = createUser.isPending || updateUser.isPending;
 
   // Modal state helpers
   const isConfirmationModalOpen = (modalAction === 'activate' || modalAction === 'deactivate') && selectedUserId !== null;
@@ -49,66 +40,62 @@ export default function UserManagementPage() {
   const closeModal = () => {
     setModalAction(null);
     setSelectedUserId(null);
-    setIsModalLoading(false);
+  };
+
+  // Handle user creation
+  const handleCreateSave = async (userData: UserCreateCrossTenant) => {
+    createUser.mutate(userData, {
+      onSuccess: (response) => {
+        toast.success(`User ${userData.email} created successfully${response.generated_password ? `. Generated password: ${response.generated_password}` : ''}`);
+        setIsCreateModalOpen(false);
+      },
+      onError: (error: any) => {
+        console.error('Failed to create user:', error);
+        const detail = error.response?.data?.detail || 'Failed to create user. Please try again.';
+        toast.error(detail);
+      }
+    });
   };
 
   // Handle modal confirmation for activate/deactivate
   const handleModalConfirm = async () => {
     if (!selectedUser || !modalAction) return;
 
-    setIsModalLoading(true);
-    try {
-      const isActivating = modalAction === 'activate';
-      await superAdminService.updateUser(
-        selectedUser.id,
-        { is_active: isActivating },
-        selectedUser.tenant_id
-      );
-
-      // Update the user in the local state
-      setUsers(prevUsers =>
-        prevUsers.map(user =>
-          user.id === selectedUser.id
-            ? { ...user, is_active: isActivating }
-            : user
-        )
-      );
-
-      closeModal();
-    } catch (error) {
-      console.error('Failed to update user status:', error);
-      setError(`Failed to ${modalAction} user. Please try again.`);
-      setIsModalLoading(false);
-    }
+    const isActivating = modalAction === 'activate';
+    updateUser.mutate({
+      userId: selectedUser.id,
+      userData: { is_active: isActivating },
+      tenantId: selectedUser.tenant_id
+    }, {
+      onSuccess: () => {
+        toast.success(`User ${isActivating ? 'activated' : 'deactivated'} successfully`);
+        closeModal();
+      },
+      onError: (error) => {
+        console.error('Failed to update user status:', error);
+        toast.error(`Failed to ${modalAction} user. Please try again.`);
+      }
+    });
   };
 
   // Handle user edit save
   const handleEditSave = async (userData: { first_name: string; last_name: string; email: string }) => {
     if (!selectedUser) return;
 
-    setIsModalLoading(true);
-    try {
-      await superAdminService.updateUser(
-        selectedUser.id,
-        userData,
-        selectedUser.tenant_id
-      );
-
-      // Update the user in the local state
-      setUsers(prevUsers =>
-        prevUsers.map(user =>
-          user.id === selectedUser.id
-            ? { ...user, ...userData }
-            : user
-        )
-      );
-
-      closeModal();
-    } catch (error) {
-      console.error('Failed to update user:', error);
-      setError('Failed to update user. Please try again.');
-      setIsModalLoading(false);
-    }
+    updateUser.mutate({
+      userId: selectedUser.id,
+      userData,
+      tenantId: selectedUser.tenant_id
+    }, {
+      onSuccess: () => {
+        toast.success('User updated successfully');
+        closeModal();
+      },
+      onError: (error) => {
+        console.error('Failed to update user:', error);
+        toast.error('Failed to update user. Please try again.');
+      }
+    });
   };
 
   // Show modal for actions
@@ -127,8 +114,12 @@ export default function UserManagementPage() {
     setModalAction('edit');
   };
 
+  const showCreateModal = () => {
+    setIsCreateModalOpen(true);
+  };
+
   const handleRefresh = () => {
-    fetchUsers();
+    refetch();
   };
 
   const handleResetPassword = (user: UserWithRoles) => {
@@ -141,7 +132,8 @@ export default function UserManagementPage() {
       if (newPassword) updatePayload.password = newPassword;
       if (newEmail) updatePayload.email = newEmail;
 
-      await superAdminService.updateUser(userId, updatePayload);
+      // We can use the mutation here as well for consistency
+      updateUser.mutate({ userId, userData: updatePayload });
     } catch (error) {
       throw error;
     }
@@ -156,24 +148,17 @@ export default function UserManagementPage() {
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button>
+          <Button onClick={showCreateModal}>
             <Plus className="h-4 w-4 mr-2" />
             Create User
           </Button>
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 flex justify-between items-center">
-          <span>{error}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setError(null)}
-            className="text-red-700 hover:text-red-900"
-          >
-            ×
-          </Button>
+      {isLoading && users.length === 0 && (
+        <div className="text-center py-8">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-gray-400" />
+          <p className="text-gray-600">Loading users...</p>
         </div>
       )}
 
@@ -363,6 +348,14 @@ export default function UserManagementPage() {
           onReset={handlePasswordResetSubmit}
         />
       )}
+
+      {/* Create User Modal */}
+      <UserCreateModal
+        isOpen={isCreateModalOpen}
+        isLoading={isModalLoading}
+        onSave={handleCreateSave}
+        onCancel={() => setIsCreateModalOpen(false)}
+      />
     </div>
   );
 }

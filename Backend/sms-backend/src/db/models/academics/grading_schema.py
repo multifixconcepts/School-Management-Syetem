@@ -15,7 +15,11 @@ class GradingSchema(TenantModel):
     description = Column(Text, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     
+    # Link to Academic Year
+    academic_year_id = Column(UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=True)
+    
     # Relationships
+    academic_year = relationship("AcademicYear", backref="grading_schemas")
     categories = relationship("GradingCategory", back_populates="schema", cascade="all, delete-orphan", lazy="joined")
     class_subjects = relationship("ClassSubject", back_populates="grading_schema")
 
@@ -23,7 +27,7 @@ class GradingSchema(TenantModel):
         return f"<GradingSchema {self.name}>"
 
     __table_args__ = (
-        UniqueConstraint('tenant_id', 'name', name='uq_grading_schema_tenant_name'),
+        UniqueConstraint('tenant_id', 'academic_year_id', 'name', name='uq_grading_schema_tenant_ay_name'),
     )
 
 class GradingCategory(TenantModel):

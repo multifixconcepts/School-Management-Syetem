@@ -16,7 +16,7 @@ from src.schemas.tenant import Tenant
 from src.services.people import StudentService, TeacherService, ParentService
 from src.services.people import SuperAdminStudentService, SuperAdminTeacherService, SuperAdminParentService
 from src.db.session import get_db
-from src.schemas.people import Student, StudentCreate, StudentUpdate, StudentBulkDelete
+from src.schemas.people import Student, StudentCreate, StudentUpdate, StudentBulkDelete, StudentListResponse
 from src.schemas.people import Teacher, TeacherCreate, TeacherUpdate, TeacherCreateResponse
 from src.schemas.people import Parent, ParentCreate, ParentUpdate
 from src.core.middleware.tenant import get_tenant_id_from_request, get_tenant_from_request 
@@ -34,8 +34,14 @@ from src.core.exceptions.business import (
     DatabaseError
 )
 from src.schemas.people.student import StudentCreateResponse
-from src.schemas.academics.enrollment import Enrollment
+from src.schemas.academics.enrollment import Enrollment as EnrollmentSchema
 from src.services.academics.enrollment import EnrollmentService
+from src.services.academics.class_enrollment_service import ClassEnrollmentService
+from src.services.academics.attendance_service import AttendanceService
+from src.db.models.academics.grade import Grade
+from src.db.models.academics.enrollment import Enrollment as EnrollmentModel
+from src.db.models.academics.class_enrollment import ClassEnrollment as ClassEnrollmentModel
+from src.utils.uuid_utils import ensure_uuid
 
 router = APIRouter()
 
@@ -57,8 +63,8 @@ async def create_student(
         # aside from 'super_admin' check in some contexts.
         student_role = student_service.db.query(UserRole).filter(UserRole.name == "student").first()
         if student_role:
-             # Re-fetch the student object to ensure it's attached to the session
-            db_student = student_service.db.query(student.models.Student).filter(student.models.Student.id == created_student.id).first()
+            # Re-fetch the student object to ensure it's attached to the session
+            db_student = student_service.db.query(student_service.model).filter(student_service.model.id == created_student.id).first()
             if db_student:
                 if student_role not in db_student.roles:
                     db_student.roles.append(student_role)
@@ -66,7 +72,7 @@ async def create_student(
                     student_service.db.refresh(db_student)
                     # Update the returned object to include the new role if needed (or just let it be)
         else:
-             print(f"WARNING: 'student' role not found in database. Created student {created_student.email} has no role assigned.")
+            print(f"WARNING: 'student' role not found in database. Created student {created_student.email} has no role assigned.")
 
         return created_student
     except ValueError as e:
@@ -83,28 +89,47 @@ async def create_students_bulk(
     current_user: User = Depends(has_permission("manage_students"))
 ) -> Any:
     """Create multiple students with individual status reporting."""
-    created_students = await student_service.bulk_create(students_in=students_in)
-    
-    # Assign 'student' role to all successfully created students
-    student_role = student_service.db.query(UserRole).filter(UserRole.name == "student").first()
-    if student_role:
+    try:
+        created_students = await student_service.bulk_create(students_in=students_in)
+        
+        # Assign 'student' role to all successfully created students
+        student_role = student_service.db.query(UserRole).filter(UserRole.name == "student").first()
+        if not student_role:
+            print("WARNING: 'student' role not found in database for bulk creation.")
+
         for student_dict in created_students:
-            # bulk_create returns a list of dictionaries with status/data
-            # We need to find the successfully created students
-             if student_dict.get("status") == "success" and "data" in student_dict:
-                student_data = student_dict["data"]
-                student_id = student_data.get("id")
-                if student_id:
-                     db_student = student_service.db.query(student.models.Student).filter(student.models.Student.id == student_id).first()
-                     if db_student and student_role not in db_student.roles:
-                        db_student.roles.append(student_role)
+            # bulk_create returns a list of dictionaries like {"success": True, "student": student, "id": str(student.id)}
+            if student_dict.get("success") and "id" in student_dict:
+                try:
+                    student_id = student_dict["id"]
+                    db_student = student_service.db.query(student_service.model).filter(student_service.model.id == student_id).first()
+                    if db_student:
+                        # Assign role if found
+                        if student_role and student_role not in db_student.roles:
+                            db_student.roles.append(student_role)
+                        
+                        # Convert model to schema for serialization UNCONDITIONALLY
+                        # This avoids the "identity crisis" where SQLAlchemy models are sent directly
+                        student_dict["student"] = Student.model_validate(db_student)
+                except Exception as e:
+                    print(f"Error processing bulk student result for {student_dict.get('email', 'unknown')}: {str(e)}")
+                    # Don't fail the whole batch, just record the serialization error
+                    student_dict["success"] = False
+                    student_dict["error"] = f"Serialization error: {str(e)}"
         
         student_service.db.commit()
-    
-    return created_students
+        return created_students
+    except Exception as e:
+        print(f"CRITICAL ERROR in create_students_bulk: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Bulk creation failed: {str(e)}"
+        )
 
 # get_students
-@router.get("/students", response_model=List[Student])
+@router.get("/students", response_model=StudentListResponse)
 async def get_students(
     *,
     student_service: StudentService = Depends(),
@@ -128,10 +153,15 @@ async def get_students(
     if "super_admin" in {role.name for role in current_user.roles}:
         # Use SuperAdminStudentService for cross-tenant access
         super_admin_service = SuperAdminStudentService(db=student_service.db) # Assuming student_service has a db attribute
-        return await super_admin_service.list(skip=skip, limit=limit, filters=filters)
+        items, total = await super_admin_service.list_with_count(skip=skip, limit=limit, filters=filters)
     else:
         # Regular tenant-scoped access
-        return await student_service.list(skip=skip, limit=limit, filters=filters)
+        items, total = await student_service.list_with_count(skip=skip, limit=limit, filters=filters)
+    
+    return {
+        "items": items,
+        "total": total
+    }
 
 # second get_student (the one with explicit deps)
 @router.get("/students/{student_id}", response_model=Student)
@@ -165,6 +195,34 @@ async def update_student(
             detail="Student not found"
         )
 
+@router.put("/students/{student_id}/status", response_model=Student)
+async def update_student_status(
+    *,
+    student_service: StudentService = Depends(),
+    student_id: UUID,
+    status: str = Query(..., description="New status for the student"),
+    reason: Optional[str] = Query(None, description="Reason for status change"),
+    current_user: User = Depends(has_permission("manage_students"))
+) -> Any:
+    """Update a student's status with validation and secondary effects."""
+    try:
+        return await student_service.update_status(id=student_id, status=status, reason=reason)
+    except EntityNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found"
+        )
+    except InvalidStatusTransitionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred: {str(e)}"
+        )
+
 @router.delete("/students/bulk", status_code=status.HTTP_200_OK)
 @router.post("/students/bulk-delete", status_code=status.HTTP_200_OK)
 async def bulk_delete_students(
@@ -174,17 +232,39 @@ async def bulk_delete_students(
     current_user: User = Depends(has_permission("manage_students"))
 ) -> Any:
     """Bulk delete students."""
-    enrollment_service = EnrollmentService(tenant=student_service.tenant, db=student_service.db) # Assuming tenant and db are accessible
+    tenant_id = ensure_uuid(student_service.tenant_id)
+    enrollment_service = EnrollmentService(tenant=tenant_id, db=student_service.db)
     
     deleted_ids = []
     errors = []
     
     for student_id in payload.student_ids:
         try:
-            # Re-use the guard logic for safety in bulk delete
-            if await enrollment_service.count(student_id=student_id) > 0:
-                errors.append({"id": str(student_id), "error": "Existing enrollments"})
+            # 1. Check for "Human" Data (Grades, Attendance) - These BLOCK deletion
+            has_human_data = False
+            
+            # Grades check
+            if student_service.db.query(Grade).filter(Grade.student_id == student_id).count() > 0:
+                has_human_data = True
+            
+            # Attendance check
+            if not has_human_data:
+                attendance_service = AttendanceService(tenant=tenant_id, db=student_service.db)
+                if len(attendance_service.get_multi(student_id=student_id, limit=1)) > 0:
+                    has_human_data = True
+
+            if has_human_data:
+                errors.append({
+                    "id": str(student_id), 
+                    "error": "Cannot delete student with existing grades or attendance records. please archive the student instead to preserve history."
+                })
                 continue
+            
+            # 2. Automated Cleanup of "System" Records (Enrollments, Class Enrollments)
+            # This breaks the "circle" of orphan records
+            student_service.db.query(ClassEnrollmentModel).filter(ClassEnrollmentModel.student_id == student_id).delete(synchronize_session=False)
+            student_service.db.query(EnrollmentModel).filter(EnrollmentModel.student_id == student_id).delete(synchronize_session=False)
+            student_service.db.commit()
                 
             await student_service.delete(id=student_id)
             deleted_ids.append(str(student_id))
@@ -212,13 +292,28 @@ async def delete_student(
         tenant=tenant_id,
         db=db
     )
-    # Guard: prevent deletion when enrollments exist to avoid NOT NULL violation
-    enrollment_service = EnrollmentService(tenant=tenant_id, db=db)
-    if await enrollment_service.count(student_id=student_id) > 0:
+    # 1. Check for "Human" Data (Grades, Attendance) - These BLOCK deletion
+    
+    # Grades check
+    if db.query(Grade).filter(Grade.student_id == student_id).count() > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot delete student: existing enrollments must be removed first."
+            detail="Cannot delete student: The student has existing grade records. These must be preserved; consider archiving instead."
         )
+
+    # Attendance check
+    attendance_service = AttendanceService(tenant=tenant_id, db=db)
+    if len(attendance_service.get_multi(student_id=student_id, limit=1)) > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete student: The student has attendance records. These must be preserved; consider archiving instead."
+        )
+
+    # 2. Automated Cleanup of "System" Records (Enrollments, Class Enrollments)
+    # This prevents the "circle" of orphan records
+    db.query(ClassEnrollmentModel).filter(ClassEnrollmentModel.student_id == student_id).delete(synchronize_session=False)
+    db.query(EnrollmentModel).filter(EnrollmentModel.student_id == student_id).delete(synchronize_session=False)
+    db.commit()
     try:
         return await student_service.delete(id=student_id)
     except EntityNotFoundError:
@@ -402,8 +497,7 @@ async def create_teachers_bulk(*, db: Session = Depends(get_db), tenant_id: UUID
 async def get_teachers(
     *, 
     db: Session = Depends(get_db), 
-    # Instead of: tenant_id: UUID = Depends(get_tenant_id_from_request),
-    # Use the context set by middleware:
+    tenant_id: UUID = Depends(get_tenant_id_from_request),
     skip: int = 0, 
     limit: int = 100,
     department: Optional[str] = None,
@@ -412,20 +506,6 @@ async def get_teachers(
     search: Optional[str] = None
 ) -> Any:
     """Get all teachers for a tenant with optional filtering and search."""
-    # Get tenant_id from context (set by middleware)
-    from src.db.session import get_tenant_id
-    try:
-        tenant_id = get_tenant_id()
-        if not tenant_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                content={"detail": "Tenant context not found"}
-            )
-    except LookupError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={"detail": "Tenant context not available"}
-        )
     
     filters = {}
     if department:
@@ -677,7 +757,7 @@ def send_teacher_whatsapp_notification(db_session: Session, tenant_id: str, phon
         print(f"Failed to send WhatsApp notification: {str(e)}")
         # Log the error but don't fail the background task
 
-@router.get("/students/{student_id}/enrollments", response_model=List[Enrollment])
+@router.get("/students/{student_id}/enrollments", response_model=List[EnrollmentSchema])
 async def get_student_enrollments(
     *,
     student_id: UUID,
@@ -700,7 +780,7 @@ async def get_student_enrollments(
     )
     return await enrollment_service.get_multi(skip=skip, limit=limit, student_id=student_id)
 
-@router.get("/students/{student_id}/enrollments/current", response_model=Optional[Enrollment])
+@router.get("/students/{student_id}/enrollments/current", response_model=Optional[EnrollmentSchema])
 async def get_student_current_enrollment(
     *,
     student_id: UUID,
@@ -722,7 +802,7 @@ async def get_student_current_enrollment(
         # Reliability: never blow up this endpoint; return None on unexpected errors
         return None
 
-@router.post("/students/bulk-enrollments", response_model=Dict[str, Optional[Enrollment]])
+@router.post("/students/bulk-enrollments", response_model=Dict[str, Optional[EnrollmentSchema]])
 async def get_bulk_current_enrollments(
     *,
     payload: Dict[str, Any] = Body(...),

@@ -68,6 +68,27 @@ class ExamService(TenantBaseService[Exam, ExamCreate, ExamUpdate]):
             self.db, tenant_id=self.tenant_id, id=id
         )
     
+    async def list(self, *, skip: int = 0, limit: int = 100, filters: Optional[Dict] = None, **kwargs) -> List[Exam]:
+        """List exams with optional period/semester filtering."""
+        query = self.db.query(Exam).filter(Exam.tenant_id == self.tenant_id)
+        
+        if filters:
+            for field, value in filters.items():
+                if field == "period_id" and value:
+                    from src.db.models.academics.period import Period
+                    period = self.db.query(Period).filter(Period.id == value).first()
+                    if period:
+                        query = query.filter(Exam.exam_date >= period.start_date, Exam.exam_date <= period.end_date)
+                elif field == "semester_id" and value:
+                    from src.db.models.academics.semester import Semester
+                    semester = self.db.query(Semester).filter(Semester.id == value).first()
+                    if semester:
+                        query = query.filter(Exam.exam_date >= semester.start_date, Exam.exam_date <= semester.end_date)
+                elif hasattr(Exam, field) and value is not None:
+                    query = query.filter(getattr(Exam, field) == value)
+        
+        return query.offset(skip).limit(limit).all()
+    
     async def create(self, *, obj_in: ExamCreate) -> Exam:
         """Create a new exam with validation."""
         # Check if subject exists

@@ -861,6 +861,7 @@ export default function AssignmentsPage() {
           academicYearId={academicYearId}
           maxScore={selectedAssignmentForMarks.max_score ?? 100}
           assessmentType="ASSIGNMENT"
+          assessmentDate={selectedAssignmentForMarks.due_date}
         />
       )}
       {/* Student Submission Dialog */}

@@ -7,7 +7,7 @@ export function useStudentGradeService() {
   const waitForApiClientReady = useMemo(() => createWaitForApiClientReady(apiClient), [apiClient]);
 
   const service = useMemo(() => ({
-    getGrades: async (filters?: Partial<{ student_id: string; student_ids: string[]; subject_id: string; assessment_type: GradeType; assessment_id: string; limit: number; skip: number; academic_year_id: string }>): Promise<Grade[]> => {
+    getGrades: async (filters?: Partial<{ student_id: string; student_ids: string[]; subject_id: string; assessment_type: GradeType; assessment_id: string; period_id: string; semester_id: string; limit: number; skip: number; academic_year_id: string }>): Promise<Grade[]> => {
       const client = await waitForApiClientReady();
       const params = new URLSearchParams();
       if (filters?.student_id) params.set('student_id', filters.student_id);
@@ -18,6 +18,8 @@ export function useStudentGradeService() {
       if (filters?.assessment_type) params.set('assessment_type', filters.assessment_type);
       if (filters?.assessment_id) params.set('assessment_id', filters.assessment_id);
       if (filters?.academic_year_id) params.set('academic_year_id', filters.academic_year_id);
+      if (filters?.period_id) params.set('period_id', filters.period_id);
+      if (filters?.semester_id) params.set('semester_id', filters.semester_id);
       if (filters?.limit) params.set('limit', String(filters.limit));
       if (filters?.skip) params.set('skip', String(filters.skip));
       const qs = params.toString();
@@ -76,9 +78,21 @@ export function useStudentGradeService() {
       return client.get<unknown>(`/academics/grades/report-card?student_id=${student_id}&academic_year=${encodeURIComponent(academic_year)}`);
     },
 
-    getSubjectSummary: async (student_id: string, subject_id: string, academic_year_id: string): Promise<any> => {
+    getSubjectSummary: async (student_id: string, subject_id: string, academic_year_id: string, period_id?: string, semester_id?: string): Promise<any> => {
       const client = await waitForApiClientReady();
-      return client.get<any>(`/academics/grades/subject-summary?student_id=${student_id}&subject_id=${subject_id}&academic_year_id=${academic_year_id}`);
+      const params = new URLSearchParams({
+        student_id,
+        subject_id,
+        academic_year_id
+      });
+      if (period_id) params.set('period_id', period_id);
+      if (semester_id) params.set('semester_id', semester_id);
+      return client.get<any>(`/academics/grades/subject-summary?${params.toString()}`);
+    },
+
+    getStudentAcademicHistory: async (student_id: string): Promise<any[]> => {
+      const client = await waitForApiClientReady();
+      return client.get<any[]>(`/academics/students/${student_id}/academic-history`);
     },
 
     publishGrades: async (params: { academic_year_id: string; grade_id: string; subject_id: string; period_number: number }): Promise<{ published_count: number }> => {

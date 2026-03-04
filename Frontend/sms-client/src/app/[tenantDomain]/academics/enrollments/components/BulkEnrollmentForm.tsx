@@ -99,12 +99,7 @@ export default function BulkEnrollmentForm({
     return Array.isArray(filteredSectionsData) ? filteredSectionsData : [];
   }, [filteredSectionsData]);
 
-  // Reset section on grade change
-  useEffect(() => {
-    if (formData.grade_id) {
-      setFormData(prev => ({ ...prev, section_id: '' }));
-    }
-  }, [formData.grade_id]);
+  // Reset section on grade change moved to manual handler to prevent CSV auto-fill wipe-out
 
   const norm = (s: string) => s?.toString().trim().toLowerCase();
   const digits = (s: string) => {
@@ -140,11 +135,16 @@ export default function BulkEnrollmentForm({
     if (!value) return undefined;
     const v = norm(value);
     const cleaned = v.replace(/^section\s+/, '').replace(/^sec\s+/, '').replace(/^s\s+/, '').trim();
-    const byExact = sections.find((s) => norm(s.name) === v);
+
+    // First try exact match
+    const byExact = sections.find((s) => norm(s.name) === v || norm(s.name) === cleaned);
     if (byExact) return byExact.id;
-    const byCleanTail = sections.find((s) => norm(s.name).endsWith(cleaned));
+
+    // Then try partial match
+    const byCleanTail = sections.find((s) => norm(s.name).endsWith(cleaned) || cleaned.endsWith(norm(s.name)));
     if (byCleanTail) return byCleanTail.id;
-    const byCleanIncl = sections.find((s) => norm(s.name).includes(cleaned));
+
+    const byCleanIncl = sections.find((s) => norm(s.name).includes(cleaned) || cleaned.includes(norm(s.name)));
     return byCleanIncl?.id;
   };
 
@@ -201,17 +201,18 @@ export default function BulkEnrollmentForm({
     const first = (aliases: string[]) => header.findIndex((h) => aliases.includes(h));
 
     // Student identity columns (now more flexible)
-    const idxAdmission = first(['admission', 'admission_number', 'admission_no', 'adm_no']);
-    const idxStudentId = first(['student_id', 'id']);
-    const idxFirstName = first(['first_name', 'firstname', 'first']);
-    const idxLastName = first(['last_name', 'lastname', 'last']);
-    const idxEmail = first(['email', 'student_email']);
+    const idxAdmission = first(['admission', 'admission_number', 'admission_no', 'adm_no', 'admission number', 'admission number']);
+    const idxStudentId = first(['student_id', 'id', 'student id', 'studentid', 'student_uuid', 'uuid']);
+    const idxFirstName = first(['first_name', 'firstname', 'first', 'fname', 'first name']);
+    const idxLastName = first(['last_name', 'lastname', 'last', 'lname', 'last name']);
+    const idxEmail = first(['email', 'student_email', 'e-mail']);
+    const idxFullName = first(['name', 'full_name', 'fullname', 'student_name', 'student name']);
 
     // Per-row names for enrollment meta
-    const idxYearName = first(['academic_year', 'year', 'academic_year_name']);
-    const idxGradeName = first(['grade', 'class', 'grade_name']);
-    const idxSectionName = first(['section', 'section_name', 'class_section']);
-    const idxDate = first(['enrollment_date']);
+    const idxYearName = first(['academic_year', 'year', 'academic_year_name', 'academic year']);
+    const idxGradeName = first(['grade', 'class', 'grade_name', 'level']);
+    const idxSectionName = first(['section', 'section_name', 'class_section', 'sec']);
+    const idxDate = first(['enrollment_date', 'date', 'enrolled_at', 'enrollment date']);
 
     const admissionToId = buildAdmissionToIdMap();
     const emailToId = buildEmailToIdMap();
@@ -240,9 +241,16 @@ export default function BulkEnrollmentForm({
 
       const firstName = idxFirstName >= 0 ? cells[idxFirstName] : '';
       const lastName = idxLastName >= 0 ? cells[idxLastName] : '';
+      const fullName = idxFullName >= 0 ? cells[idxFullName] : '';
       const email = idxEmail >= 0 ? cells[idxEmail] : '';
       const admission = idxAdmission >= 0 ? cells[idxAdmission] : '';
-      const nameKey = firstName && lastName ? norm(`${firstName} ${lastName}`) : '';
+
+      let nameKey = '';
+      if (firstName && lastName) {
+        nameKey = norm(`${firstName} ${lastName}`);
+      } else if (fullName) {
+        nameKey = norm(fullName);
+      }
 
       let resolvedId: string | undefined;
 
@@ -250,19 +258,19 @@ export default function BulkEnrollmentForm({
       if (idxStudentId >= 0 && cells[idxStudentId]) {
         resolvedId = cells[idxStudentId];
       } else if (admission) {
-        resolvedId = admissionToId.get(admission);
+        resolvedId = admissionToId.get(String(admission).trim());
       } else if (email) {
         resolvedId = emailToId.get(norm(email));
       } else if (nameKey) {
         const id = nameToId.get(nameKey);
         if (id) resolvedId = id;
         else if (ambiguousNameKeys.has(nameKey)) {
-          notMatchedAdmissions.push(`${firstName} ${lastName} (ambiguous)`);
+          notMatchedAdmissions.push(`${firstName || lastName || fullName} (ambiguous)`);
         }
       }
 
       if (!resolvedId) {
-        const label = (firstName || lastName) ? `${firstName} ${lastName}`.trim()
+        const label = (firstName || lastName || fullName) ? `${firstName} ${lastName} ${fullName}`.trim()
           : (email || admission || `(row ${i + 1})`);
         notMatchedAdmissions.push(label || `(row ${i + 1})`);
       } else {
@@ -411,7 +419,9 @@ export default function BulkEnrollmentForm({
           email: r.email!,
         }));
 
+        console.log('[BulkEnrollment] Attempting to create missing students:', studentsToCreate);
         const results = await createStudentsBulkMutation.mutateAsync(studentsToCreate);
+        console.log('[BulkEnrollment] Student creation results:', results);
 
         results.forEach((res, idx) => {
           if (res.success) {
@@ -443,6 +453,7 @@ export default function BulkEnrollmentForm({
         });
       }
 
+      console.log('[BulkEnrollment] Enrolling all student IDs:', allIds);
       const resp: any = await bulkCreateEnrollmentsMutation.mutateAsync({
         ...formData,
         student_ids: allIds,
@@ -471,11 +482,17 @@ export default function BulkEnrollmentForm({
       });
       onSuccess();
     } catch (error: any) {
-      if (error instanceof AppError && (error.statusCode === 422 || error.type === ErrorType.VALIDATION)) {
-        toast.error(error.message);
+      console.error('[BulkEnrollment] Process failed:', error);
+      if (error instanceof AppError) {
+        if (error.statusCode === 401 || error.statusCode === 403) {
+          toast.error('Session expired. Please log out and back in.');
+        } else if (error.statusCode === 422 || error.type === ErrorType.VALIDATION) {
+          toast.error(error.message);
+        } else {
+          toast.error(error.message || 'Bulk enrollment failed');
+        }
       } else {
-        console.error('Error bulk enrolling students:', error);
-        toast.error('Failed to enroll students');
+        toast.error('An unexpected error occurred during bulk enrollment');
       }
     }
   };
@@ -508,7 +525,7 @@ export default function BulkEnrollmentForm({
           <Label htmlFor="grade">Grade *</Label>
           <Select
             value={formData.grade_id}
-            onValueChange={(value) => setFormData((prev) => ({ ...prev, grade_id: value }))}
+            onValueChange={(value) => setFormData((prev) => ({ ...prev, grade_id: value, section_id: '' }))}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select grade" />

@@ -93,9 +93,7 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 for route in app.routes:
     print(f"🛣️ {route.path}")
 
-@app.get("/")
-def root():
-    return {"message": "Welcome to the School Management System API"}
+# Static files and OpenAPI customization
 
 # @app.get("/api/v1/super-admin/dashboard/recent-tenants")
 # async def get_recent_tenants(limit: int = 5):

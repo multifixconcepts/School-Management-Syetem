@@ -80,10 +80,9 @@ export async function GET(request: NextRequest) {
       },
       signal,
     });
-    cancel();
-
     if (!response.ok) {
       const errorText = await response.text();
+      cancel();
       console.error('[Sections API] Backend error:', response.status, errorText);
       return NextResponse.json(
         { error: `Backend error: ${response.status}` },
@@ -92,6 +91,7 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
+    cancel();
     return NextResponse.json(data);
 
   } catch (error: any) {
@@ -156,15 +156,15 @@ export async function POST(request: NextRequest) {
       body,
       signal,
     });
-    cancel();
-
     if (!response.ok) {
       const errorText = await response.text();
+      cancel();
       console.error('[Sections API] Backend error:', response.status, errorText);
       return NextResponse.json({ error: `Backend error: ${response.status}` }, { status: response.status });
     }
 
     const data = await response.json();
+    cancel();
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('[Sections API] Error:', error);

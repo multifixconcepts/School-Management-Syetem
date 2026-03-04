@@ -61,9 +61,24 @@ export default React.forwardRef<
   const [promoteEnrollment, setPromoteEnrollment] = React.useState<Enrollment | null>(null);
   const [transferDate, setTransferDate] = React.useState<string>(new Date().toISOString().split('T')[0]);
   const [transferReason, setTransferReason] = React.useState<string>('');
+  const [transferSchool, setTransferSchool] = React.useState<string>('');
   const [promoteToGradeId, setPromoteToGradeId] = React.useState<string>('');
   const enrollmentService = useEnrollmentService();
   const promotionService = usePromotionService();
+
+  const getStudentDisplay = (studentId: string, enrollment?: Enrollment) => {
+    // Try to get from enrollment's nested student first
+    if (enrollment?.student) {
+      const s = enrollment.student;
+      return `${s.firstName || s.first_name} ${s.lastName || s.last_name} (${s.admission_number})`;
+    }
+    // Fallback to searching the students prop
+    const student = students.find(s => s.id === studentId);
+    if (student) {
+      return `${student.firstName} ${student.lastName} (${student.admission_number})`;
+    }
+    return studentId;
+  };
 
   React.useImperativeHandle(ref, () => ({
     setTransferEnrollment,
@@ -161,7 +176,7 @@ export default React.forwardRef<
             </div>
             <div className="space-y-3">
               <div className="text-sm">
-                Promoting: <span className="font-medium">{promoteEnrollment.student_id}</span>
+                Promoting: <span className="font-medium text-blue-600">{getStudentDisplay(promoteEnrollment.student_id, promoteEnrollment)}</span>
               </div>
               <div>
                 <Label>Target Grade</Label>
@@ -229,7 +244,7 @@ export default React.forwardRef<
             </div>
             <div className="space-y-3">
               <div className="text-sm">
-                Transferring: <span className="font-medium">{transferEnrollment.student_id}</span>
+                Transferring: <span className="font-medium text-blue-600">{getStudentDisplay(transferEnrollment.student_id, transferEnrollment)}</span>
               </div>
               <div>
                 <Label>Transfer Date</Label>
@@ -248,6 +263,15 @@ export default React.forwardRef<
                   placeholder="Reason for transfer"
                 />
               </div>
+              <div>
+                <Label>Transfer School (Optional)</Label>
+                <Input
+                  type="text"
+                  value={transferSchool}
+                  onChange={(e) => setTransferSchool(e.target.value)}
+                  placeholder="Destination school name"
+                />
+              </div>
               <div className="flex justify-end gap-2">
                 <Button
                   variant="secondary"
@@ -257,7 +281,8 @@ export default React.forwardRef<
                         transferEnrollment.id,
                         'transferred',
                         transferDate,
-                        transferReason || undefined
+                        transferReason || undefined,
+                        transferSchool || undefined
                       );
                       toast.success('Student transferred successfully');
                       setTransferEnrollment(null);

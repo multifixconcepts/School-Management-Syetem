@@ -66,6 +66,8 @@ export default function ReportCardPage() {
     const [selectedStudentId, setSelectedStudentId] = useState<string>('');
     const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
     const [reportData, setReportData] = useState<any>(null);
+    const [academicHistory, setAcademicHistory] = useState<any[]>([]);
+    const [viewMode, setViewMode] = useState<'report-card' | 'history'>('report-card');
     const [studentSearch, setStudentSearch] = useState('');
 
     // Reporting Config
@@ -109,13 +111,8 @@ export default function ReportCardPage() {
         if (studentSearch.length < 2) return;
         setSearching(true);
         try {
-            const res = await studentService.getStudents(); // Simplified, should use search endpoint if available
-            const results = (res || []).filter((s: any) =>
-                s.first_name?.toLowerCase().includes(studentSearch.toLowerCase()) ||
-                s.last_name?.toLowerCase().includes(studentSearch.toLowerCase()) ||
-                s.admission_number?.includes(studentSearch)
-            );
-            setStudents(results);
+            const res = await studentService.getStudents({ search: studentSearch });
+            setStudents(res.items || []);
         } catch (err) {
             toast.error('Search failed');
         } finally {
@@ -126,12 +123,32 @@ export default function ReportCardPage() {
     const fetchReportCard = async () => {
         if (!selectedStudentId || !selectedAcademicYear) return;
         setLoading(true);
+        setViewMode('report-card');
         try {
             const res = await gradeService.getReportCard(selectedStudentId, selectedAcademicYear);
             setReportData(res);
+            setAcademicHistory([]);
         } catch (err) {
             toast.error('Failed to generate report card');
             setReportData(null);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleFetchHistory = async () => {
+        if (!selectedStudentId) {
+            toast.error('Please select a student first');
+            return;
+        }
+        setLoading(true);
+        setViewMode('history');
+        try {
+            const data = await gradeService.getStudentAcademicHistory(selectedStudentId);
+            setAcademicHistory(data);
+            setReportData(null);
+        } catch (err) {
+            toast.error('Failed to fetch academic history');
         } finally {
             setLoading(false);
         }
@@ -377,6 +394,14 @@ export default function ReportCardPage() {
                                 <Button variant="secondary" onClick={handleStudentSearch} disabled={searching}>
                                     {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Search'}
                                 </Button>
+                                <Button
+                                    variant="outline"
+                                    className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                                    onClick={handleFetchHistory}
+                                    disabled={!selectedStudentId || loading}
+                                >
+                                    <Award className="w-4 h-4" /> Academic History
+                                </Button>
                             </div>
                             {students.length > 0 && !selectedStudentId && (
                                 <div className="absolute z-20 mt-1 w-full max-w-[500px] bg-white border rounded-lg shadow-xl overflow-hidden max-h-[300px] overflow-y-auto">
@@ -414,6 +439,76 @@ export default function ReportCardPage() {
                 <div className="h-[400px] flex flex-col items-center justify-center">
                     <Loader2 className="w-12 h-12 animate-spin text-indigo-200" />
                     <p className="text-gray-400 mt-4 font-medium italic">Assembling performance data...</p>
+                </div>
+            ) : viewMode === 'history' && academicHistory.length > 0 ? (
+                <div id="report-card-content" className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden max-w-5xl mx-auto print:shadow-none print:border-none print:m-0 print:rounded-none print-full-width">
+                    <div className="bg-indigo-950 p-8 text-white flex justify-between items-start">
+                        <div className="flex items-center gap-6">
+                            <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center border border-white/20">
+                                <Award className="w-10 h-10 text-indigo-300" />
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-black uppercase tracking-tighter">Official Academic Transcript</h2>
+                                <p className="text-indigo-300 text-sm font-medium mt-1">Multi-Year Academic Performance History</p>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xs font-black uppercase tracking-widest opacity-50">Student ID</p>
+                            <p className="text-lg font-mono font-bold">#{selectedStudentId.split('-')[0].toUpperCase()}</p>
+                        </div>
+                    </div>
+
+                    <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                        <div>
+                            <Label className="text-[9px] uppercase font-black text-gray-400 mb-1 block tracking-wider">Student Name</Label>
+                            <p className="font-bold text-lg text-gray-900">{studentSearch}</p>
+                        </div>
+                        <div className="text-right">
+                            <Label className="text-[9px] uppercase font-black text-gray-400 mb-1 block tracking-wider">Date Issued</Label>
+                            <p className="font-medium text-gray-600 italic text-sm">{format(new Date(), 'MMMM dd, yyyy')}</p>
+                        </div>
+                    </div>
+
+                    <div className="p-8 space-y-12">
+                        {academicHistory.map((year: any, idx: number) => (
+                            <div key={idx} className="space-y-4">
+                                <div className="flex justify-between items-end border-b-2 border-indigo-900/10 pb-2">
+                                    <div>
+                                        <h3 className="text-xl font-extrabold text-indigo-950 uppercase tracking-tight">{year.academic_year_name}</h3>
+                                        <p className="text-sm font-bold text-indigo-600 uppercase">{year.grade_level}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <Label className="text-[9px] uppercase font-black text-gray-400 mb-1 block tracking-wider">Annual GPA</Label>
+                                        <Badge className="bg-indigo-900 text-white font-mono px-3 py-1 text-base">{year.gpa.toFixed(2)}</Badge>
+                                    </div>
+                                </div>
+
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-gray-50/50 hover:bg-gray-50/50 border-none">
+                                            <TableHead className="font-black text-gray-400 uppercase text-[10px]">Subject Course</TableHead>
+                                            <TableHead className="text-right font-black text-gray-400 uppercase text-[10px]">Score %</TableHead>
+                                            <TableHead className="text-right font-black text-gray-400 uppercase text-[10px]">Final Grade</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {year.subjects.map((sub: any, sIdx: number) => (
+                                            <TableRow key={sIdx} className="hover:bg-transparent">
+                                                <TableCell className="font-bold text-gray-700 py-4">{sub.subject_name}</TableCell>
+                                                <TableCell className="text-right font-mono text-gray-600">{sub.final_percentage.toFixed(1)}%</TableCell>
+                                                <TableCell className="text-right font-black text-indigo-700 text-lg">{sub.letter_grade}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="p-8 bg-gray-50 border-t border-gray-100 flex justify-between items-center italic text-[10px] text-gray-400">
+                        <p>This document is an unofficial academic transcript generated by the High School SMS.</p>
+                        <p>End of Record</p>
+                    </div>
                 </div>
             ) : reportData ? (
                 <div id="report-card-content" className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden max-w-5xl mx-auto print:shadow-none print:border-none print:m-0 print:rounded-none print-full-width">

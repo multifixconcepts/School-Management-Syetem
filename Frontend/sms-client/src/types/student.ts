@@ -23,7 +23,10 @@ export interface Student extends User {
   withdrawal_reason?: string;
   photo?: string;
   phone_number?: string;
+  grade_id?: string;
+  section_id?: string;
 }
+
 
 export interface StudentCreateResponse extends Student {
   generated_password?: string;
@@ -78,4 +81,7 @@ export interface StudentUpdate {
   photo?: string;
   phone_number?: string;
   status?: string;
+  grade_id?: string;
+  section_id?: string;
+  academic_year?: string;
 }

@@ -19,7 +19,7 @@ import type { Enrollment } from '@/types/enrollment';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 import StudentAssignmentDialog from '@/components/students/student-assignment-dialog';
 import RemedialPanel from '@/components/students/remedial-panel';
-import { useDeleteStudent, useUpdateStudent, useBulkDeleteStudents } from '@/hooks/queries/students';
+import { useDeleteStudent, useUpdateStudent, useBulkDeleteStudents, useUpdateStudentStatus } from '@/hooks/queries/students';
 import { PasswordResetDialog } from '@/components/common/PasswordResetDialog';
 
 export default function StudentsPage() {
@@ -32,12 +32,37 @@ export default function StudentsPage() {
   const [deletingMany, setDeletingMany] = useState<string[] | null>(null);
   const [assigningStudent, setAssigningStudent] = useState<Student | null>(null);
   const [resettingStudent, setResettingStudent] = useState<Student | null>(null);
-  // refreshKey removed
+  const [statusTogglingStudent, setStatusTogglingStudent] = useState<Student | null>(null);
+
+  // ... (previous code)
+
+  const handleStatusToggle = async (student: Student) => {
+    setStatusTogglingStudent(student);
+  };
+
+  const confirmStatusToggle = async () => {
+    if (!statusTogglingStudent) return;
+
+    const newStatus = statusTogglingStudent.status === 'active' ? 'inactive' : 'active';
+
+    updateStatusMutation.mutate({ id: statusTogglingStudent.id, status: newStatus }, {
+      onSuccess: () => {
+        toast.success(`Student ${newStatus === 'active' ? 'restored' : 'archived'} successfully`);
+        setStatusTogglingStudent(null);
+      },
+      onError: (error) => {
+        console.error('Failed to update student status:', error);
+        toast.error("Failed to update student status");
+        setStatusTogglingStudent(null);
+      }
+    });
+  };
   const studentService = useStudentService();
   const enrollmentService = useEnrollmentService();
 
   const deleteStudentMutation = useDeleteStudent();
   const updateStudentMutation = useUpdateStudent();
+  const updateStatusMutation = useUpdateStudentStatus();
   const bulkDeleteMutation = useBulkDeleteStudents();
   const { data: currentEnrollment, isLoading: enrollmentLoading } = useCurrentEnrollment(viewingStudent?.id || '');
 
@@ -153,18 +178,7 @@ export default function StudentsPage() {
     });
   };
 
-  const handleStatusToggle = async (student: Student) => {
-    const newStatus = student.status === 'active' ? 'inactive' : 'active';
-    updateStudentMutation.mutate({ id: student.id, student: { status: newStatus } as StudentUpdate }, {
-      onSuccess: () => {
-        toast.success("Student status updated successfully");
-      },
-      onError: (error) => {
-        console.error('Failed to update student status:', error);
-        toast.error("Failed to update student status");
-      }
-    });
-  };
+
 
   const onReEvaluate = async () => {
     try {
@@ -313,6 +327,17 @@ export default function StudentsPage() {
         confirmButtonText="Delete All"
         cancelButtonText="Cancel"
         confirmButtonColor="red"
+      />
+
+      <ConfirmationModal
+        isOpen={!!statusTogglingStudent}
+        onCancel={() => setStatusTogglingStudent(null)}
+        onConfirm={confirmStatusToggle}
+        title={statusTogglingStudent?.status === 'active' ? 'Archive Student' : 'Restore Student'}
+        message={`Are you sure you want to ${statusTogglingStudent?.status === 'active' ? 'archive' : 'restore'} ${statusTogglingStudent?.firstName} ${statusTogglingStudent?.lastName}?`}
+        confirmButtonText={statusTogglingStudent?.status === 'active' ? 'Archive' : 'Restore'}
+        cancelButtonText="Cancel"
+        confirmButtonColor={statusTogglingStudent?.status === 'active' ? 'red' : 'blue'}
       />
 
       {/* Student Assignment Dialog */}

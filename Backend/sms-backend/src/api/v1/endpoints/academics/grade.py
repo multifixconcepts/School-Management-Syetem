@@ -15,6 +15,52 @@ from src.core.exceptions.business import (
 
 router = APIRouter()
 
+@router.get("/grades/subject-summary", response_model=Dict[str, Any])
+async def subject_performance_summary(
+    *,
+    grade_service: GradeCalculationService = Depends(),
+    student_id: UUID = Query(..., description="ID of the student"),
+    subject_id: UUID = Query(..., description="ID of the subject"),
+    academic_year_id: UUID = Query(..., description="ID of the academic year"),
+    period_id: Optional[UUID] = Query(None, description="Optional filter by period"),
+    semester_id: Optional[UUID] = Query(None, description="Optional filter by semester"),
+    current_user: User = Depends(has_any_role(["admin", "teacher", "student"]))
+) -> Any:
+    """Get a detailed summary of a student's performance in a specific subject."""
+    # Security check: Students can only view their own summaries
+    user_roles = {role.name for role in current_user.roles}
+    if "student" in user_roles and "admin" not in user_roles and "teacher" not in user_roles:
+        if student_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Students can only view their own performance summaries.")
+            
+    try:
+        return await grade_service.get_subject_performance_summary(
+            student_id=student_id, 
+            subject_id=subject_id, 
+            academic_year_id=academic_year_id,
+            period_id=period_id,
+            semester_id=semester_id
+        )
+    except EntityNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except (BusinessLogicError, BusinessRuleViolationError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+@router.get("/students/{student_id}/academic-history", response_model=List[Dict[str, Any]])
+async def get_student_academic_history(
+    student_id: UUID,
+    grade_service: GradeCalculationService = Depends(),
+    current_user: User = Depends(has_any_role(["admin", "teacher", "student"]))
+) -> Any:
+    """Get multi-year academic history for a student."""
+    # Security check: Students can only view their own history
+    user_roles = {role.name for role in current_user.roles}
+    if "student" in user_roles and "admin" not in user_roles and "teacher" not in user_roles:
+        if student_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Students can only view their own academic history.")
+            
+    return await grade_service.get_student_academic_history(student_id=student_id)
+
 # Create a grade
 @router.post("/grades", response_model=GradeSchema, status_code=status.HTTP_201_CREATED)
 async def create_grade(
@@ -273,30 +319,6 @@ async def weighted_average(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid payload: {str(e)}")
 
 # Analytics: Subject Performance Summary
-@router.get("/grades/subject-summary", response_model=Dict[str, Any])
-async def subject_performance_summary(
-    *,
-    grade_service: GradeCalculationService = Depends(),
-    student_id: UUID = Query(...),
-    subject_id: UUID = Query(...),
-    academic_year_id: UUID = Query(...),
-    current_user: User = Depends(has_any_role(["admin", "teacher", "student"]))
-) -> Any:
-    """Get a detailed summary of a student's performance in a specific subject."""
-    # Security check: Students can only view their own summaries
-    user_roles = {role.name for role in current_user.roles}
-    if "student" in user_roles and "admin" not in user_roles and "teacher" not in user_roles:
-        if student_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Students can only view their own performance summaries.")
-            
-    try:
-        return await grade_service.get_subject_performance_summary(
-            student_id=student_id, 
-            subject_id=subject_id, 
-            academic_year_id=academic_year_id
-        )
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except (BusinessLogicError, BusinessRuleViolationError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

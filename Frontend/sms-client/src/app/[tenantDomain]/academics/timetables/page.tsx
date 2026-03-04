@@ -12,6 +12,7 @@ import TimetableFilters from './components/TimetableFilters';
 import TimetableList from './components/TimetableList';
 import TimetableDialog from './components/TimetableDialog';
 import TimetableScheduleView from './components/TimetableScheduleView';
+import TeacherWeeklySchedule from './components/TeacherWeeklySchedule';
 import { useAcademicYear } from '@/contexts/academic-year-context';
 import { useAuth } from '@/hooks/use-auth';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
@@ -91,10 +92,12 @@ export default function TimetablesPage() {
       setLoading(true);
       try {
         const { timetableService } = servicesRef.current;
+        const isTeacher = user?.roles?.some(r => r.name.toLowerCase() === 'teacher');
         const p = timetableService.getTimetables({
           academic_year_id: filters.academic_year_id,
           grade_id: filters.grade_id,
           section_id: filters.section_id,
+          teacher_id: isTeacher ? user?.id : undefined,
           search
         });
         inflightRef.current = p;
@@ -175,46 +178,66 @@ export default function TimetablesPage() {
     setFilters(updated);
   };
 
+  const isTeacher = user?.roles?.some(r => r.name.toLowerCase() === 'teacher');
+
   return (
     <>
       <div className="container mx-auto p-6 space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Timetables</h1>
-          <p className="text-gray-600 mt-2">Manage class schedules and time slots</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {isTeacher ? 'My Schedule' : 'Timetables'}
+            </h1>
+            <p className="text-gray-600 mt-2">
+              {isTeacher ? 'Your personal weekly teaching schedule' : 'Manage class schedules and time slots'}
+            </p>
+          </div>
+          {isTeacher && (
+            <div className="bg-indigo-50 px-4 py-2 rounded-2xl border border-indigo-100 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+              <span className="text-xs font-bold text-indigo-700 capitalize">{user?.firstName} {user?.lastName}</span>
+            </div>
+          )}
         </div>
 
-        <TimetableFilters
-          academicYears={ayList}
-          grades={grades}
-          sections={sections}
-          filters={filters}
-          onFiltersChange={handleFiltersChange}
-          search={search}
-          onSearchChange={setSearch}
-          onReset={() => {
-            setFilters({ academic_year_id: selectedAcademicYearId });
-            setSearch('');
-          }}
-          onCreate={() => {
-            setEditingTimetable(null);
-            setIsDialogOpen(true);
-          }}
-          isAdmin={isAdmin}
-        />
+        {!isTeacher && (
+          <TimetableFilters
+            academicYears={ayList}
+            grades={grades}
+            sections={sections}
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+            search={search}
+            onSearchChange={setSearch}
+            onReset={() => {
+              setFilters({ academic_year_id: selectedAcademicYearId });
+              setSearch('');
+            }}
+            onCreate={() => {
+              setEditingTimetable(null);
+              setIsDialogOpen(true);
+            }}
+            isAdmin={isAdmin}
+          />
+        )}
 
-        <TimetableList
-          loading={loading}
-          timetables={timetables}
-          grades={grades}
-          sections={sections}
-          onDelete={handleDelete}
-          onEdit={(t) => {
-            setEditingTimetable(t);
-            setIsDialogOpen(true);
-          }}
-          onViewSchedule={(t) => setViewingTimetable(t)}
-          isAdmin={isAdmin}
-        />
+        {isTeacher ? (
+          <TeacherWeeklySchedule />
+        ) : (
+          <TimetableList
+            loading={loading}
+            timetables={timetables}
+            grades={grades}
+            sections={sections}
+            onDelete={handleDelete}
+            onEdit={(t) => {
+              setEditingTimetable(t);
+              setIsDialogOpen(true);
+            }}
+            onViewSchedule={(t) => setViewingTimetable(t)}
+            isAdmin={isAdmin}
+          />
+        )}
       </div>
       <TimetableDialog
         isOpen={isDialogOpen}

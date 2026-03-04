@@ -9,6 +9,7 @@ import EnrollmentStatsCards from './components/EnrollmentStatsCards';
 import EnrollmentFiltersComponent from './components/EnrollmentFiltersComponent';
 import EnrollmentTable from './components/EnrollmentTable';
 import { toast } from 'sonner';
+import ConfirmationModal from '@/components/common/ConfirmationModal';
 import { useAcademicYear } from '@/contexts/academic-year-context';
 import { Button } from '@/components/ui/button';
 import {
@@ -42,7 +43,8 @@ export default function EnrollmentManagementPage() {
   );
 
   // Load auxiliary data with TanStack query caching
-  const { data: students = [] } = useStudentsPaged(0, 1000);
+  const { data: studentsData } = useStudentsPaged(0, 1000);
+  const students = studentsData?.items || [];
   const { data: academicYears = [] } = useAcademicYears();
   const { data: grades = [] } = useEnrollmentGrades();
   const { data: sections = [] } = useEnrollmentSections();
@@ -60,23 +62,27 @@ export default function EnrollmentManagementPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
   const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | null>(null);
+  const [statusTogglingEnrollment, setStatusTogglingEnrollment] = useState<{ id: string, active: boolean } | null>(null);
   const dialogsRef = useRef<{ setTransferEnrollment: (e: Enrollment | null) => void; setPromoteEnrollment: (e: Enrollment | null) => void } | null>(null);
 
   const handleArchive = async (id: string) => {
-    try {
-      await updateMutation.mutateAsync({ id, data: { is_active: false } });
-      toast.success('Enrollment archived');
-    } catch (error) {
-      toast.error('Failed to archive enrollment');
-    }
+    setStatusTogglingEnrollment({ id, active: false });
   };
 
   const handleUnarchive = async (id: string) => {
+    setStatusTogglingEnrollment({ id, active: true });
+  };
+
+  const confirmStatusToggle = async () => {
+    if (!statusTogglingEnrollment) return;
+    const { id, active } = statusTogglingEnrollment;
     try {
-      await updateMutation.mutateAsync({ id, data: { is_active: true } });
-      toast.success('Enrollment unarchived');
+      await updateMutation.mutateAsync({ id, data: { is_active: active } });
+      toast.success(`Enrollment ${active ? 'unarchived' : 'archived'}`);
+      setStatusTogglingEnrollment(null);
     } catch (error) {
-      toast.error('Failed to unarchive enrollment');
+      toast.error(`Failed to ${active ? 'unarchive' : 'archive'} enrollment`);
+      setStatusTogglingEnrollment(null);
     }
   };
 
@@ -102,7 +108,6 @@ export default function EnrollmentManagementPage() {
     setEditingEnrollment(null);
     setShowCreateDialog(false);
     setShowBulkDialog(false);
-    toast.success('Operation successful');
   };
 
   const handleFilterChange = (key: keyof EnrollmentFilters, value: string) => {
@@ -118,6 +123,11 @@ export default function EnrollmentManagementPage() {
     if (key === 'academic_year_id') {
       setSelectedAcademicYearId(value || '');
     }
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (val: string) => {
+    setSearchTerm(val);
     setCurrentPage(1);
   };
 
@@ -197,7 +207,7 @@ export default function EnrollmentManagementPage() {
         />
         <EnrollmentFiltersComponent
           searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
+          setSearchTerm={handleSearchChange}
           filters={filters}
           onFilterChange={handleFilterChange}
           onClearFilters={clearFilters}
@@ -221,6 +231,19 @@ export default function EnrollmentManagementPage() {
           onPromote={handlePromote}
           onArchive={handleArchive}
           onUnarchive={handleUnarchive}
+        />
+
+        <ConfirmationModal
+          isOpen={!!statusTogglingEnrollment}
+          onCancel={() => setStatusTogglingEnrollment(null)}
+          onConfirm={confirmStatusToggle}
+          title={statusTogglingEnrollment?.active ? "Unarchive Enrollment" : "Archive Enrollment"}
+          message={statusTogglingEnrollment?.active
+            ? "Are you sure you want to unarchive this enrollment? It will appear in active lists again."
+            : "Are you sure you want to archive this enrollment? It will be hidden from default views."}
+          confirmButtonText={statusTogglingEnrollment?.active ? "Unarchive" : "Archive"}
+          cancelButtonText="Cancel"
+          confirmButtonColor={statusTogglingEnrollment?.active ? "blue" : "amber"}
         />
       </div>
     </PermissionGuard>

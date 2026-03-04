@@ -79,6 +79,7 @@ export interface TimetableFilters {
   academic_year_id?: string;
   grade_id?: string;
   section_id?: string;
+  teacher_id?: string;
   search?: string;
 }
 
@@ -95,6 +96,7 @@ export const useTimetableService = () => {
       if (filters?.academic_year_id) qs.append('academic_year_id', filters.academic_year_id);
       if (filters?.grade_id) qs.append('grade_id', filters.grade_id);
       if (filters?.section_id) qs.append('section_id', filters.section_id);
+      if (filters?.teacher_id) qs.append('teacher_id', filters.teacher_id);
       if (filters?.search) qs.append('search', filters.search);
       const url = `/academics/timetables${qs.toString() ? `?${qs.toString()}` : ''}`;
       const raw = await apiClient.get<TimetableBackend[]>(url);
@@ -241,12 +243,26 @@ export const useTimetableService = () => {
     }
   }, [apiClient]);
 
+  const getMySchedule = useCallback(async (): Promise<TimeSlot[]> => {
+    try {
+      setLoading(true);
+      setError(null);
+      return await apiClient.get<TimeSlot[]>('/academics/schedules/my-schedule');
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch personal schedule'));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [apiClient]);
+
   return useMemo(() => ({
     loading,
     error,
     getTimetables,
     deleteTimetable,
     createTimetable,
-    updateTimetable
-  }), [loading, error, getTimetables, deleteTimetable, createTimetable, updateTimetable]);
+    updateTimetable,
+    getMySchedule
+  }), [loading, error, getTimetables, deleteTimetable, createTimetable, updateTimetable, getMySchedule]);
 };

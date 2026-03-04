@@ -5,7 +5,7 @@ import { EnrollmentFilters, EnrollmentCreate } from '@/types/enrollment';
 export const enrollmentKeys = {
     all: ['enrollments'] as const,
     lists: () => [...enrollmentKeys.all, 'list'] as const,
-    list: (filters: EnrollmentFilters) => [...enrollmentKeys.lists(), filters] as const,
+    list: (skip: number, limit: number, filters: EnrollmentFilters) => [...enrollmentKeys.lists(), { skip, limit, ...filters }] as const,
     details: () => [...enrollmentKeys.all, 'detail'] as const,
     detail: (id: string) => [...enrollmentKeys.details(), id] as const,
     current: (studentId: string) => [...enrollmentKeys.all, 'current', studentId] as const,
@@ -19,7 +19,7 @@ export function useEnrollments(skip: number = 0, limit: number = 10, filters?: E
     const service = useEnrollmentService();
 
     return useQuery({
-        queryKey: enrollmentKeys.list(filters || {}),
+        queryKey: enrollmentKeys.list(skip, limit, filters || {}),
         queryFn: () => service.getEnrollments(skip, limit, filters),
     });
 }

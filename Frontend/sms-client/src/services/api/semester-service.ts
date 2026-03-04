@@ -15,11 +15,12 @@ export interface Semester {
 
 export function useSemesterService() {
   const { apiClient } = useApiClientWithLoading();
-  const waitForApiClientReady = createWaitForApiClientReady(apiClient);
+  const waitForApiClientReady = useMemo(() => createWaitForApiClientReady(apiClient), [apiClient]);
 
   const getSemesters = useCallback(async (academicYearId: string): Promise<Semester[]> => {
     const client = await waitForApiClientReady();
-    return client.get<Semester[]>(`/academics/semesters?academic_year_id=${academicYearId}`);
+    const resp = await client.get<Semester[]>(`/academics/semesters?academic_year_id=${academicYearId}`);
+    return Array.isArray(resp) ? resp : [];
   }, [waitForApiClientReady]);
 
   const togglePublication = useCallback(async (semesterId: string): Promise<Semester> => {

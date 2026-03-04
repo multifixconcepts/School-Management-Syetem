@@ -28,11 +28,13 @@ class ScheduleService(TenantBaseService[Schedule, ScheduleCreate, ScheduleUpdate
         """Get schedules by period."""
         return schedule_crud.get_by_period(self.db, tenant_id=self.tenant_id, period=period)
     
-    async def get_by_time_range(self, start_time, end_time) -> List[Schedule]:
-        """Get schedules by time range."""
-        return schedule_crud.get_by_time_range(
-            self.db, tenant_id=self.tenant_id, start_time=start_time, end_time=end_time
-        )
+    async def get_teacher_schedule(self, teacher_id: UUID) -> List[Schedule]:
+        """Get personal schedule for a specific teacher."""
+        from src.db.models.academics.class_subject import ClassSubject
+        return self.db.query(Schedule).join(Schedule.class_obj).filter(
+            ClassSubject.teacher_id == teacher_id,
+            Schedule.tenant_id == self.tenant_id
+        ).all()
 
     async def list(self, *, skip: int = 0, limit: int = 100, filters: Dict[str, Any] = {}) -> List[Schedule]:
         """List schedules with advanced filtering (handling container class_id)."""

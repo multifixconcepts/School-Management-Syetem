@@ -10,7 +10,7 @@ export const studentKeys = {
     detail: (id: string) => [...studentKeys.details(), id] as const,
 };
 
-export function useStudents(filters?: { grade?: string; section?: string; status?: string }) {
+export function useStudents(filters?: { grade?: string; section?: string; status?: string; skip?: number; limit?: number }) {
     const service = useStudentService();
 
     return useQuery({
@@ -20,12 +20,12 @@ export function useStudents(filters?: { grade?: string; section?: string; status
     });
 }
 
-export function useStudentsPaged(skip: number = 0, limit: number = 100) {
+export function useStudentsPaged(skip: number = 0, limit: number = 100, filters?: any) {
     const service = useStudentService();
 
     return useQuery({
-        queryKey: [...studentKeys.lists(), 'paged', { skip, limit }],
-        queryFn: () => service.getStudentsPaged(skip, limit),
+        queryKey: [...studentKeys.lists(), 'paged', { skip, limit, ...filters }],
+        queryFn: () => service.getStudentsPaged(skip, limit, filters),
         staleTime: 5 * 60 * 1000,
     });
 }
@@ -59,6 +59,20 @@ export function useUpdateStudent() {
     return useMutation({
         mutationFn: ({ id, student }: { id: string; student: StudentUpdate }) =>
             service.updateStudent(id, student),
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: studentKeys.lists() });
+            queryClient.invalidateQueries({ queryKey: studentKeys.detail(variables.id) });
+        },
+    });
+}
+
+export function useUpdateStudentStatus() {
+    const service = useStudentService();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({ id, status, reason }: { id: string; status: string; reason?: string }) =>
+            service.updateStudentStatus(id, status, reason),
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: studentKeys.lists() });
             queryClient.invalidateQueries({ queryKey: studentKeys.detail(variables.id) });

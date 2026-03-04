@@ -61,7 +61,6 @@ class GradingService(TenantBaseService):
         
         for category in schema.categories:
             # Get all grades for this student in this class and category
-            # We need to link Grade to GradingCategory too
             grades = self.db.query(Grade).join(Assessment, Grade.assessment_id == Assessment.id).filter(
                 Grade.student_id == student_id,
                 Assessment.class_id == class_id,
@@ -81,3 +80,97 @@ class GradingService(TenantBaseService):
                 total_score += category_contribution
                 
         return round(total_score, 2)
+
+    async def get_categories_with_status(
+        self, 
+        class_id: UUID, 
+        subject_id: UUID,
+        period_id: Optional[UUID] = None,
+        semester_id: Optional[UUID] = None
+    ) -> List[Dict[str, Any]]:
+        """Fetch categories with their current mark allocation status, optionally filtered by period/semester."""
+        from src.db.models.academics.class_subject import ClassSubject
+        from src.db.models.academics.grading_schema import GradingSchema
+        from src.db.models.academics.period import Period
+        from src.db.models.academics.semester import Semester
+        
+        # 1. Get Class to find Academic Year
+        cls = self.db.query(Class).filter(Class.id == class_id).first()
+        if not cls:
+            return []
+            
+        # 2. Look for year-wide ACTIVE schema first
+        schema = self.db.query(GradingSchema).filter(
+            GradingSchema.tenant_id == self.tenant_id,
+            GradingSchema.academic_year_id == cls.academic_year_id,
+            GradingSchema.is_active == True
+        ).first()
+        
+        # 3. If no active year-wide schema, look for ANY schema for this year
+        if not schema:
+            schema = self.db.query(GradingSchema).filter(
+                GradingSchema.tenant_id == self.tenant_id,
+                GradingSchema.academic_year_id == cls.academic_year_id
+            ).first()
+            
+        # 4. Fallback to ClassSubject specific schema if still not found
+        if not schema:
+            cs = self.db.query(ClassSubject).filter(
+                ClassSubject.class_id == class_id,
+                ClassSubject.subject_id == subject_id,
+                ClassSubject.tenant_id == self.tenant_id
+            ).first()
+            if cs and cs.grading_schema_id:
+                schema = cs.grading_schema
+            
+        # 5. Last resort: ANY active schema for the tenant
+        if not schema:
+            schema = self.db.query(GradingSchema).filter(
+                GradingSchema.tenant_id == self.tenant_id,
+                GradingSchema.is_active == True
+            ).first()
+
+        if not schema:
+            return []
+            
+        
+        # 6. Determine Date Range for Filtering if requested
+        start_date = None
+        end_date = None
+        
+        if period_id:
+            period = self.db.query(Period).filter(Period.id == period_id).first()
+            if period:
+                start_date = period.start_date
+                end_date = period.end_date
+        elif semester_id:
+            semester = self.db.query(Semester).filter(Semester.id == semester_id).first()
+            if semester:
+                start_date = semester.start_date
+                end_date = semester.end_date
+
+        results = []
+        
+        for category in schema.categories:
+            query = self.db.query(func.sum(Assessment.max_score)).filter(
+                Assessment.class_id == class_id,
+                Assessment.subject_id == subject_id,
+                Assessment.grading_category_id == category.id,
+                Assessment.tenant_id == self.tenant_id
+            )
+            
+            if start_date and end_date:
+                query = query.filter(
+                    Assessment.assessment_date >= start_date,
+                    Assessment.assessment_date <= end_date
+                )
+                
+            total_allocated = query.scalar() or 0.0
+            
+            results.append({
+                **{c.name: getattr(category, c.name) for c in category.__table__.columns},
+                "allocated_marks": total_allocated,
+                "remaining_marks": max(0, category.weight - total_allocated)
+            })
+            
+        return results

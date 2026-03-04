@@ -10,11 +10,17 @@ export interface GradingCategory {
     schema_id: string;
 }
 
+export interface GradingCategoryWithStatus extends GradingCategory {
+    allocated_marks: number;
+    remaining_marks: number;
+}
+
 export interface GradingSchema {
     id: string;
     name: string;
     description?: string;
     is_active: boolean;
+    academic_year_id?: string;
     categories: GradingCategory[];
 }
 
@@ -22,6 +28,7 @@ export interface GradingSchemaCreate {
     name: string;
     description?: string;
     is_active?: boolean;
+    academic_year_id?: string;
     categories: {
         name: string;
         weight: number;
@@ -55,6 +62,13 @@ export function useGradingService() {
         return await apiClient.delete<any>(`/academics/grading-schemas/${id}`);
     };
 
+    const getCategoriesStatus = async (classId: string, subjectId: string, periodId?: string, semesterId?: string) => {
+        const params = new URLSearchParams({ class_id: classId, subject_id: subjectId });
+        if (periodId) params.append('period_id', periodId);
+        if (semesterId) params.append('semester_id', semesterId);
+        return await apiClient.get<GradingCategoryWithStatus[]>(`/academics/categories-status?${params.toString()}`);
+    };
+
     return {
         // Direct methods
         getGradingSchemas,
@@ -62,6 +76,7 @@ export function useGradingService() {
         createGradingSchema,
         updateGradingSchema,
         deleteGradingSchema,
+        getCategoriesStatus,
 
         // React Query Hooks
         useSchemas: () => useQuery({

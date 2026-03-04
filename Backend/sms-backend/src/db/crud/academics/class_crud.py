@@ -24,10 +24,11 @@ class CRUDClass(TenantCRUDBase[Class, ClassCreate, ClassUpdate]):
             Class.academic_year_id == academic_year_id
         ).all()
     
-    def get_by_grade_and_section(self, db: Session, tenant_id: Any, grade_id: UUID, section_id: UUID) -> List[Class]:
-        """Get classes by grade and section within a tenant."""
+    def get_by_grade_and_section(self, db: Session, tenant_id: Any, academic_year_id: UUID, grade_id: UUID, section_id: UUID) -> List[Class]:
+        """Get classes by academic year, grade and section within a tenant."""
         return db.query(Class).filter(
             Class.tenant_id == tenant_id,
+            Class.academic_year_id == academic_year_id,
             Class.grade_id == grade_id,
             Class.section_id == section_id
         ).all()

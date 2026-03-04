@@ -41,5 +41,10 @@ export function useScheduleService() {
       if (!schedules.length) throw new Error(`No schedule for class ${params.class_id} on ${day_of_week}${params.period !== undefined ? ` period ${params.period}` : ''}`);
       return schedules[0].id;
     },
+    // Get personal schedule for teacher
+    getMySchedule: async (): Promise<Schedule[]> => {
+      const client = await waitForApiClientReady();
+      return client.get<Schedule[]>('/academics/schedules/my-schedule');
+    },
   }), [waitForApiClientReady]);
 }

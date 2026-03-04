@@ -54,12 +54,14 @@ export interface AssignmentFilters {
   grade_id?: string;
   section_id?: string;
   academic_year_id?: string;
+  period_id?: string;
+  semester_id?: string;
   is_published?: boolean;
 }
 
 export function useAssignmentService() {
   const { apiClient, isLoading: apiLoading } = useApiClientWithLoading();
-  const waitForApiClientReady = createWaitForApiClientReady(apiClient);
+  const waitForApiClientReady = useMemo(() => createWaitForApiClientReady(apiClient), [apiClient]);
 
   const service = useMemo(() => ({
     getAssignments: async (filters?: AssignmentFilters): Promise<Assignment[]> => {
@@ -72,6 +74,8 @@ export function useAssignmentService() {
       if (filters?.grade_id) qs.append('grade_id', filters.grade_id);
       if (filters?.section_id) qs.append('section_id', filters.section_id);
       if (filters?.academic_year_id) qs.append('academic_year_id', filters.academic_year_id);
+      if (filters?.period_id) qs.append('period_id', filters.period_id);
+      if (filters?.semester_id) qs.append('semester_id', filters.semester_id);
       if (filters?.is_published !== undefined) qs.append('is_published', String(filters.is_published));
       const url = `/academics/assignments${qs.toString() ? `?${qs.toString()}` : ''}`;
       return client.get<Assignment[]>(url);

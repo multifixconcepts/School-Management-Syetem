@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 
 export function useStudentService() {
   const { apiClient, isLoading: apiLoading } = useApiClientWithLoading();
-  const waitForApiClientReady = createWaitForApiClientReady(apiClient);
+  const waitForApiClientReady = useMemo(() => createWaitForApiClientReady(apiClient), [apiClient]);
 
   const mapStudent = (s: any): Student => ({
     ...s,
@@ -13,17 +13,28 @@ export function useStudentService() {
   });
 
   const service = useMemo(() => ({
-    getStudents: async (params?: { grade?: string; section?: string; status?: string; search?: string }) => {
+    getStudents: async (params?: { grade?: string; section?: string; status?: string; search?: string; skip?: number; limit?: number }) => {
       const client = await waitForApiClientReady();
       const queryParams = new URLSearchParams();
       if (params?.grade) queryParams.append('grade', params.grade);
       if (params?.section) queryParams.append('section', params.section);
       if (params?.status) queryParams.append('status', params.status);
       if (params?.search) queryParams.append('search', params.search);
+      if (typeof params?.skip === 'number') queryParams.append('skip', String(params.skip));
+      if (typeof params?.limit === 'number') queryParams.append('limit', String(params.limit));
+
       const queryString = queryParams.toString();
       const endpoint = `/people/students${queryString ? `?${queryString}` : ''}`;
-      const resp = await client.get<any[]>(endpoint);
-      return resp.map(mapStudent);
+      const resp = await client.get<any>(endpoint);
+
+      if (Array.isArray(resp)) {
+        return { items: resp.map(mapStudent), total: resp.length };
+      }
+
+      return {
+        items: resp.items?.map(mapStudent) || [],
+        total: resp.total || 0
+      };
     },
     getStudentById: async (id: string) => {
       const client = await waitForApiClientReady();
@@ -92,18 +103,7 @@ export function useStudentService() {
       limit?: number,
       params?: { grade?: string; section?: string; status?: string; search?: string }
     ) => {
-      const client = await waitForApiClientReady();
-      const queryParams = new URLSearchParams();
-      if (typeof skip === 'number') queryParams.append('skip', String(skip));
-      if (typeof limit === 'number') queryParams.append('limit', String(limit));
-      if (params?.grade) queryParams.append('grade', params.grade);
-      if (params?.section) queryParams.append('section', params.section);
-      if (params?.status) queryParams.append('status', params.status);
-      if (params?.search) queryParams.append('search', params.search);
-      const queryString = queryParams.toString();
-      const endpoint = `/people/students${queryString ? `?${queryString}` : ''}`;
-      const resp = await client.get<any[]>(endpoint);
-      return resp.map(mapStudent);
+      return service.getStudents({ ...params, skip, limit });
     },
   }), [waitForApiClientReady]);
 

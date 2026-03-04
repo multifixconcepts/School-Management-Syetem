@@ -38,6 +38,7 @@ interface MarksEntryDialogProps {
     academicYearId: string;
     maxScore: number;
     assessmentType?: GradeType;
+    assessmentDate?: string;
 }
 
 interface StudentRow {
@@ -77,6 +78,7 @@ export function MarksEntryDialog({
     academicYearId: rawAcademicYearId,
     maxScore,
     assessmentType = 'EXAM',
+    assessmentDate,
 }: MarksEntryDialogProps) {
     const [students, setStudents] = useState<StudentRow[]>([]);
     const [loading, setLoading] = useState(false);
@@ -259,7 +261,7 @@ export function MarksEntryDialog({
                     assessment_type: assessmentType,
                     assessment_id: examId,
                     assessment_name: examTitle,
-                    assessment_date: new Date().toISOString().split('T')[0],
+                    assessment_date: assessmentDate || new Date().toISOString().split('T')[0],
                     score: parseFloat(s.score),
                     max_score: maxScore,
                     percentage: (parseFloat(s.score) / maxScore) * 100,

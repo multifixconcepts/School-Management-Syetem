@@ -45,6 +45,9 @@ class Student(User):
     graduation_date = Column(Date, nullable=True)
     withdrawal_reason = Column(String(255), nullable=True)
     
+    transfer_school = Column(String(255), nullable=True, comment="Name of the school the student transferred to")
+    transfer_reason = Column(String(255), nullable=True, comment="Reason for transfer")
+    
     __mapper_args__ = {
         "polymorphic_identity": "student",
     }

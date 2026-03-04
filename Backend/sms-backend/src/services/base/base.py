@@ -133,6 +133,17 @@ class SuperAdminBaseService(Generic[ModelType, CreateSchemaType, UpdateSchemaTyp
                 query = query.filter(getattr(self.model, field) == value)
         return query.offset(skip).limit(limit).all()
 
+    async def list_with_count(self, *, skip: int = 0, limit: int = 100, filters: Dict = {}) -> tuple[List[ModelType], int]:
+        """List all records across tenants with total count."""
+        query = self.db.query(self.model)
+        for field, value in filters.items():
+            if hasattr(self.model, field):
+                query = query.filter(getattr(self.model, field) == value)
+        
+        total = query.count()
+        items = query.offset(skip).limit(limit).all()
+        return items, total
+
     async def create(self, *, obj_in: CreateSchemaType) -> ModelType:
         """Create a new record."""
         return self.crud.create(self.db, tenant_id=getattr(obj_in, 'tenant_id', None), obj_in=obj_in)

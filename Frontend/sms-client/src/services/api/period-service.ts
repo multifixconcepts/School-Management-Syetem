@@ -14,11 +14,12 @@ export interface Period {
 
 export function usePeriodService() {
     const { apiClient } = useApiClientWithLoading();
-    const waitForApiClientReady = createWaitForApiClientReady(apiClient);
+    const waitForApiClientReady = useMemo(() => createWaitForApiClientReady(apiClient), [apiClient]);
 
     const getPeriods = useCallback(async (semesterId: string): Promise<Period[]> => {
         const client = await waitForApiClientReady();
-        return client.get<Period[]>(`/academics/periods?semester_id=${semesterId}`);
+        const resp = await client.get<Period[]>(`/academics/periods?semester_id=${semesterId}`);
+        return Array.isArray(resp) ? resp : [];
     }, [waitForApiClientReady]);
 
     const togglePublication = useCallback(async (periodId: string): Promise<Period> => {

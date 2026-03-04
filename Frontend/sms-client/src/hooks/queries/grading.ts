@@ -5,7 +5,19 @@ export const gradingKeys = {
     all: ['grading'] as const,
     schemas: () => [...gradingKeys.all, 'schemas'] as const,
     schema: (id: string) => [...gradingKeys.schemas(), id] as const,
+    categoriesStatus: (classId: string, subjectId: string, periodId?: string, semesterId?: string) =>
+        [...gradingKeys.all, 'categories-status', classId, subjectId, periodId, semesterId] as const,
 };
+
+export function useCategoriesStatus(classId: string, subjectId: string, periodId?: string, semesterId?: string) {
+    const service = useGradingService();
+
+    return useQuery({
+        queryKey: gradingKeys.categoriesStatus(classId, subjectId, periodId, semesterId),
+        queryFn: () => service.getCategoriesStatus(classId, subjectId, periodId, semesterId),
+        enabled: !!classId && !!subjectId,
+    });
+}
 
 export function useGradingSchemas() {
     const service = useGradingService();

@@ -1,17 +1,19 @@
 from typing import Any, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from src.db.session import get_db
 from src.schemas.academics.grading_schema import (
     GradingSchema, GradingSchemaCreate, GradingSchemaUpdate,
-    GradingCategory, GradingCategoryCreate, GradingCategoryUpdate
+    GradingCategory, GradingCategoryCreate, GradingCategoryUpdate,
+    GradingCategoryWithStatus
 )
 from src.db.crud.academics.grading_crud import grading_schema, grading_category
-from src.core.auth.dependencies import has_any_role
+from src.core.auth.dependencies import has_any_role, get_current_user
 from src.schemas.auth import User
+from src.services.academics.grading_service import GradingService
 from src.core.exceptions.business import DuplicateEntityError, EntityNotFoundError
 
 router = APIRouter()
@@ -95,3 +97,22 @@ async def delete_schema(
     """Delete a grading schema."""
     tenant_id = current_user.tenant_id if hasattr(current_user, 'tenant_id') else None
     return grading_schema.delete(db, tenant_id=tenant_id, id=schema_id)
+
+@router.get("/categories-status", response_model=List[GradingCategoryWithStatus])
+async def get_categories_status(
+    class_id: UUID,
+    subject_id: UUID,
+    period_id: Optional[UUID] = Query(None, description="Optional filter by specific period"),
+    semester_id: Optional[UUID] = Query(None, description="Optional filter by specific semester"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """Get grading categories with weight allocation status for a class/subject."""
+    tenant_id = current_user.tenant_id if hasattr(current_user, 'tenant_id') else None
+    service = GradingService(db, tenant_id)
+    return await service.get_categories_with_status(
+        class_id=class_id, 
+        subject_id=subject_id,
+        period_id=period_id,
+        semester_id=semester_id
+    )

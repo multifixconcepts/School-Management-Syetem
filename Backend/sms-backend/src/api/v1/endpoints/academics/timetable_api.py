@@ -54,7 +54,8 @@ async def get_timetables(
     academic_year_id: Optional[UUID] = None,
     grade_id: Optional[UUID] = None,
     section_id: Optional[UUID] = None,
-    is_active: Optional[bool] = None
+    is_active: Optional[bool] = None,
+    teacher_id: Optional[UUID] = None
 ) -> Any:
     """Get all timetables for a tenant with optional filtering."""
     filters: Dict[str, Any] = {}
@@ -68,6 +69,8 @@ async def get_timetables(
         filters["section_id"] = section_id
     if is_active is not None:
         filters["is_active"] = is_active
+    if teacher_id:
+        filters["teacher_id"] = teacher_id
 
     return await timetable_service.list(skip=skip, limit=limit, filters=filters)
 

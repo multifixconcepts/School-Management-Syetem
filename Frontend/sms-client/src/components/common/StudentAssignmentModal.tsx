@@ -69,7 +69,7 @@ export function StudentAssignmentModal({
         academic_year: academicYear
       });
 
-      toast.success(`Successfully assigned ${student.first_name} ${student.last_name} to the class`);
+      toast.success(`Successfully assigned ${student.firstName} ${student.lastName} to the class`);
       onAssignmentComplete();
       onClose();
     } catch (error) {
@@ -128,7 +128,7 @@ export function StudentAssignmentModal({
               </div>
               <div>
                 <span className="text-gray-500">Student ID:</span>
-                <span className="ml-2">{student?.student_id || 'Not assigned'}</span>
+                <span className="ml-2">{student?.admission_number || 'Not assigned'}</span>
               </div>
               <div>
                 <span className="text-gray-500">Date of Birth:</span>
@@ -169,8 +169,8 @@ export function StudentAssignmentModal({
                   <div
                     key={grade.id}
                     className={`p-3 border rounded-lg cursor-pointer transition-all ${selectedGradeId === grade.id
-                        ? 'border-green-500 bg-green-50'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      ? 'border-green-500 bg-green-50'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                       }`}
                     onClick={() => setSelectedGradeId(grade.id)}
                   >
@@ -182,8 +182,8 @@ export function StudentAssignmentModal({
                         )}
                       </div>
                       <div className={`w-4 h-4 rounded-full border-2 ${selectedGradeId === grade.id
-                          ? 'border-green-500 bg-green-500'
-                          : 'border-gray-300'
+                        ? 'border-green-500 bg-green-500'
+                        : 'border-gray-300'
                         }`}>
                         {selectedGradeId === grade.id && (
                           <div className="w-full h-full rounded-full bg-white scale-50"></div>
@@ -217,8 +217,8 @@ export function StudentAssignmentModal({
                     <div
                       key={section.id}
                       className={`p-3 border rounded-lg cursor-pointer transition-all ${selectedSectionId === section.id
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                         }`}
                       onClick={() => setSelectedSectionId(section.id)}
                     >
@@ -230,8 +230,8 @@ export function StudentAssignmentModal({
                           )}
                         </div>
                         <div className={`w-4 h-4 rounded-full border-2 ${selectedSectionId === section.id
-                            ? 'border-green-500 bg-green-500'
-                            : 'border-gray-300'
+                          ? 'border-green-500 bg-green-500'
+                          : 'border-gray-300'
                           }`}>
                           {selectedSectionId === section.id && (
                             <div className="w-full h-full rounded-full bg-white scale-50"></div>
