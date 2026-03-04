@@ -1,0 +1,61 @@
+services:
+  school8:
+    build: .
+    container_name: school8
+    restart: always
+    ports:
+      - "8088:8000"
+    volumes:
+      - ./Backend/sms-backend:/app
+    env_file:
+      - .env
+    networks:
+      - npm-network
+    depends_on:
+      db-school8:
+        condition: service_healthy
+      redis-school8:
+        condition: service_healthy
+    command: >
+      sh -c "cd /app && 
+             poetry run alembic upgrade head &&
+             poetry run uvicorn main:app --host 0.0.0.0 --port 8000"
+
+  db-school8:
+    image: postgres:15-alpine
+    container_name: db-school8
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db_school8_data:/var/lib/postgresql/data
+    networks:
+      - npm-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-school8:
+    image: redis:7-alpine
+    container_name: redis-school8
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_school8_data:/data
+    networks:
+      - npm-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db_school8_data:
+  redis_school8_data:
+
+networks:
+  npm-network:
+    external: true
