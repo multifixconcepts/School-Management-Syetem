@@ -83,3 +83,55 @@ response.json
 error_*.json
 scripts/
 docs/
+
+# ============================================
+# ADD THESE DOCKER-RELATED ENTRIES
+# ============================================
+
+# Docker environment files
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.*.local
+
+# Docker compose overrides (for local secrets)
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Docker secrets directory (if you create one)
+/secrets/
+/secrets/*.txt
+/secrets/*.json
+
+# Docker data volumes (don't commit volume data)
+/data/
+/volumes/
+
+# ============================================
+# ADD THESE TO PROTECT SENSITIVE FILES
+# ============================================
+
+# Database files (if any local test DB)
+*.db
+*.sqlite3
+
+# SSL certificates (never commit these)
+*.crt
+*.key
+*.pem
+/certs/
+
+# Backup files
+*.bak
+*.backup
+/backups/
+
+# ============================================
+# EXCEPTIONS - Files that SHOULD be committed
+# ============================================
+
+# Keep example files
+!.env.example
+!docker-compose.yml
+!Dockerfile
